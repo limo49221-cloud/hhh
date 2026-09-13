@@ -210,8 +210,8 @@ let currentQuote = null;
 function openChat() {
   showScreen("chatApp");
   document.getElementById("chatTitle").textContent = state.settings.taName;
-  applyChatBackground();
   renderMessages();
+  applyAppearance();
 }
 function applyChatBackground() {
   const body = document.getElementById("chatBody");
@@ -1670,6 +1670,27 @@ function renderSettingsPage() {
       s[k] = v.trim() || s[k];
       saveSettings(); renderSettingsPage();
       if (k === "taName") document.getElementById("chatTitle").textContent = s.taName;
+    });
+  });
+  body.querySelectorAll("[data-avatar]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const k = btn.dataset.avatar;
+      const f = document.createElement("input");
+      f.type = "file"; f.accept = "image/*";
+      f.onchange = async () => {
+        if (!f.files[0]) return;
+        const data = await compressImage(f.files[0], 300, 0.85);
+        s[k] = data; saveSettings(); renderSettingsPage();
+        toast("已更新头像");
+      };
+      f.click();
+    });
+  });
+  body.querySelectorAll("[data-avclear]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const k = btn.dataset.avclear;
+      s[k] = ""; saveSettings(); renderSettingsPage();
+      toast("已清除头像");
     });
   });
   body.querySelectorAll("[data-color]").forEach(inp => {
