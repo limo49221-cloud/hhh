@@ -29,7 +29,8 @@ const state = {
     taMomentsProb: 30,
     taCommentProb: 50,    
     searchLinkProb: 10,
-    suggestProb: 5
+    suggestProb: 5,
+    surveyProb: 5
   }),
   cards: store.get("cards", { categories: [] }),
   pokeTexts: store.get("pokeTexts", ["拍了拍我的头", "拍了拍我的肩膀", "拍了拍我的脸"]),
@@ -332,6 +333,16 @@ function renderMessage(body, m) {
     inner += st.platforms.map((p, i) =>
       `<button class="suggest-btn" data-sg="${i}">${p.icon} ${p.name}</button>`
     ).join("");
+  } else if (m.survey) {
+    if (m.survey.answered) {
+      inner += `<div style="font-size:15px;font-weight:600;margin-bottom:6px;">📋 ${esc(m.survey.q)}</div>`;
+      inner += `<div style="font-size:13px;color:#888;">已作答：${esc(m.survey.answered)}</div>`;
+    } else {
+      inner += `<div style="font-size:15px;font-weight:600;margin-bottom:8px;">📋 ${esc(m.survey.q)}</div>`;
+      inner += m.survey.opts.map((o, i) =>
+        `<button class="survey-btn" data-si="${i}">${esc(String.fromCharCode(65 + i))}. ${esc(o)}</button>`
+      ).join("");
+    }
   } else if (m.image) inner += `<img class="msg-img" src="${m.image}">`;
   else if (m.searchLink) inner += `<div style="padding:8px 10px;background:#f0f0f0;border-radius:6px;cursor:pointer;font-size:14px;" class="search-link">🔗 点击搜索：${esc(m.searchLink.kw)}（${esc(m.searchLink.platform ? m.searchLink.platform.name : "")}）</div>`;
   else if (m.baiduImg) inner += `<div style="padding:8px;background:#f0f0f0;border-radius:6px;cursor:pointer;" class="baidu-img">🔗 点击查看百度图片：${esc(m.baiduImg)}</div>`;
@@ -391,6 +402,15 @@ function renderMessage(body, m) {
         rowEl.style.background = "rgba(255,235,59,0.4)";
         setTimeout(() => { rowEl.style.background = ""; }, 1200);
       }
+    });
+  });
+  bubble.querySelectorAll(".survey-btn").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (!m.survey || m.survey.answered) return;
+      const idx = Number(btn.dataset.si);
+      m.survey.answered = m.survey.opts[idx];
+      saveMessages(); renderMessages();
     });
   });
   bubble.querySelectorAll(".suggest-btn").forEach(btn => {
@@ -501,6 +521,54 @@ function sendMessage(text, opts = {}) {
   renderMessages();
   setTimeout(taReply, rand(state.settings.replyDelayMin * 1000, state.settings.replyDelayMax * 1000));
 }
+function getSurveyPool() {
+  const cat = state.cards.categories.find(c => c.name === "问卷题库");
+  if (!cat || cat.enabled === false) return [];
+  return cat.cards.map(c => c.text).filter(Boolean);
+}
+
+function parseSurveyLine(line) {
+  const parts = line.split("|").map(s => s.trim());
+  if (parts.length < 5) return null;
+  const q = parts[0];
+  const opts = parts.slice(1, 5).filter(Boolean);
+  if (!q || opts.length < 2) return null;
+  return { q, opts };
+}
+
+function taAskSurvey() {
+  const pool = getSurveyPool();
+  if (!pool.length) return false;
+  const parsed = pool.map(parseSurveyLine).filter(Boolean);
+  if (!parsed.length) return false;
+  const picked = pick(parsed);
+  addBotMessage("", { survey: { q: picked.q, opts: picked.opts, answered: null } });
+  return true;
+}
+function taSuggest() {
+  const words = [];
+  state.messages.slice(-10).forEach(m => {
+    if (m.text && !m.recalled) {
+      m.text.split(/\s+/).filter(Boolean).forEach(w => {
+        if (w.length >= 1 && w.length <= 15) words.push(w);
+      });
+    }
+  });
+  if (!words.length) return false;
+  const used = new Set(state.suggestHistory.map(h => h.kw));
+  let pool = words.filter(w => !used.has(w));
+  if (!pool.length) {
+    state.suggestHistory = [];
+    pool = words;
+  }
+  const kw = pick(pool);
+  const type = pick(SUGGEST_TYPES);
+  state.suggestHistory.push({ kw, type: type.key, ts: Date.now() });
+  if (state.suggestHistory.length > 300) state.suggestHistory.shift();
+  saveSuggestHistory();
+  addBotMessage("", { suggest: { kw, type: type.key } });
+  return true;
+}
 function taReply() {
   const body = document.getElementById("chatBody");
   if (Math.random() * 100 < state.settings.readNoReplyProb) return;
@@ -510,6 +578,9 @@ function taReply() {
   body.scrollTop = body.scrollHeight;
   setTimeout(() => {
     typing.remove();
+    if (Math.random() * 100 < (state.settings.surveyProb || 0)) {
+      if (taAskSurvey()) return;
+    }
     if (Math.random() * 100 < (state.settings.suggestProb || 0)) {
       if (taSuggest()) return;
     }
@@ -553,6 +624,7 @@ function addBotMessage(text, opts = {}) {
         baiduImg: opts.baiduImg || null,
     searchLink: opts.searchLink || null,
     suggest: opts.suggest || null,
+    survey: opts.survey || null,
     words: opts.words || null
   };
   state.messages.push(msg);
@@ -1377,7 +1449,51 @@ function openSearch() {
 }
 
 /* ========== 其他功能占位 ========== */
-function openSurvey()   { showScreen("surveyApp");  document.getElementById("surveyBody").innerHTML  = `<div class="empty">功能开发中…</div>`; }
+function openSurvey() {
+  showScreen("surveyApp");
+  renderSurvey();
+}
+
+function renderSurvey() {
+  const body = document.getElementById("surveyBody");
+  body.innerHTML = `
+    <div class="paper-box">
+      <div style="font-size:15px;color:#666;margin-bottom:12px;">出一题问 TA（选项固定 ABCD）：</div>
+      <div class="row"><input class="input" id="svQ" placeholder="题目"></div>
+      <div class="row"><input class="input" id="svA" placeholder="A 选项"></div>
+      <div class="row"><input class="input" id="svB" placeholder="B 选项"></div>
+      <div class="row"><input class="input" id="svC" placeholder="C 选项"></div>
+      <div class="row"><input class="input" id="svD" placeholder="D 选项"></div>
+      <button class="btn" id="svSendBtn" style="width:100%;margin-top:8px;">问 TA</button>
+    </div>
+  `;
+  body.querySelector("#svSendBtn").addEventListener("click", () => {
+    const q = body.querySelector("#svQ").value.trim();
+    const a = body.querySelector("#svA").value.trim();
+    const b = body.querySelector("#svB").value.trim();
+    const c = body.querySelector("#svC").value.trim();
+    const d = body.querySelector("#svD").value.trim();
+    if (!q) return toast("题目不能空");
+    const opts = [a, b, c, d].filter(Boolean);
+    if (opts.length < 2) return toast("至少填两个选项");
+    const picked = pick(opts);
+    const d2 = nowBeijing();
+    state.messages.push({
+      id: uid(), from: "me",
+      text: `📋 ${q}\n（我问了 TA 一道题）`,
+      time: fmtTime(d2), ts: d2.getTime(),
+      isCard: false
+    });
+    saveMessages();
+    addBotMessage(`我选：${picked}`, { isCard: false });
+    toast("已发到聊天");
+    body.querySelector("#svQ").value = "";
+    body.querySelector("#svA").value = "";
+    body.querySelector("#svB").value = "";
+    body.querySelector("#svC").value = "";
+    body.querySelector("#svD").value = "";
+  });
+}
 function openLetters()  { showScreen("lettersApp"); document.getElementById("lettersBody").innerHTML = `<div class="empty">功能开发中…</div>`; }
 function openEat()      { showScreen("eatApp");     document.getElementById("eatBody").innerHTML     = `<div class="empty">功能开发中…</div>`; }
 function openCheckin()  { showScreen("checkinApp"); document.getElementById("checkinBody").innerHTML = `<div class="empty">功能开发中…</div>`; }
@@ -1801,6 +1917,7 @@ function renderSettingsPage() {
     <div class="list-item"><div class="name">对方评论（${s.taCommentProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.taCommentProb}" data-range="taCommentProb"></div></div>
     <div class="list-item"><div class="name">随机搜索链接（${s.searchLinkProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.searchLinkProb}" data-range="searchLinkProb"></div></div>
     <div class="list-item"><div class="name">随机推荐（${s.suggestProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.suggestProb}" data-range="suggestProb"></div></div>
+    <div class="list-item"><div class="name">TA 出题概率（${s.surveyProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.surveyProb}" data-range="surveyProb"></div></div>
     <div class="list-item"><div class="name">拍一拍文案库</div><div class="actions"><button data-pokemgr>管理（${state.pokeTexts.length}）</button></div></div>`;
   body.querySelectorAll("[data-edit]").forEach(btn => {
     btn.addEventListener("click", () => {
@@ -1921,6 +2038,13 @@ function init() {
     });
     state.cards.categories.push({ id: uid(), name: "心情", enabled: true, cards: [] });
     state.cards.categories.push({ id: uid(), name: "意图", enabled: true, cards: [] });
+    saveCards();
+  }
+  if (!state.cards.categories.find(c => c.name === "问卷题库")) {
+    state.cards.categories.push({ id: uid(), name: "问卷题库", enabled: true, cards: [
+      { id: uid(), text: "今天开心吗？| 开心 | 一般 | 不开心 | 说不上来" },
+      { id: uid(), text: "周末想干嘛？| 宅家 | 出门 | 睡觉 | 学习" }
+    ]});
     saveCards();
   }
 }
