@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>我的小站</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="desktop" class="screen active">
+  <div class="desktop-status">
+    <span id="desktopTime">--:--</span>
+    <span id="desktopDate"></span>
+  </div>
+  <div class="desktop-pages" id="desktopPages"></div>
+  <div class="desktop-dots" id="desktopDots"></div>
+  <div class="desktop-dock">
+    <div class="dock-item" data-app="settings">
+      <div class="dock-icon">⚙️</div>
+      <div class="dock-name">设置</div>
+    </div>
+  </div>
+</div>
+
+<div id="chatApp" class="screen">
+  <div class="chat-nav">
+    <button class="nav-back" data-back>‹</button>
+    <div class="nav-title" id="chatTitle">TA</div>
+    <button class="nav-menu" id="chatMenuBtn">⋯</button>
+  </div>
+  <div class="chat-body" id="chatBody"></div>
+  <div class="chat-inputbar">
+    <button class="input-btn" id="voiceBtn">🎤</button>
+    <input id="chatInput" placeholder="" autocomplete="off">
+    <button class="input-btn" id="imgBtn">🖼️</button>
+    <button class="input-btn" id="emojiBtn">😊</button>
+    <button class="send-btn" id="sendBtn" disabled>发送</button>
+  </div>
+  <input type="file" id="imgFile" accept="image/*" hidden>
+</div>
+
+<div id="cardsApp" class="screen">
+  <div class="chat-nav">
+    <button class="nav-back" data-back>‹</button>
+    <div class="nav-title">字卡管理</div>
+    <button class="nav-menu" id="newCatBtn" style="right:70px;">+ 分类</button>
+    <button class="nav-menu" id="batchToggleBtn">批量</button>
+  </div>
+  <div class="page-body" id="cardsBody"></div>
+  <div id="batchBar" class="batch-bar" style="display:none;">
+    <div class="batch-info">已选 <span id="batchCount">0</span> 张</div>
+    <div class="batch-actions">
+      <button class="btn secondary" id="selectAllBtn">全选</button>
+      <button class="btn secondary" id="batchMoveBtn">移动</button>
+      <button class="btn secondary" id="batchExportBtn">导出</button>
+      <button class="btn danger" id="batchDelBtn">删除</button>
+      <button class="btn secondary" id="batchCancelBtn">取消</button>
+    </div>
+  </div>
+</div>
+
+<div id="paperApp" class="screen">
+  <div class="chat-nav">
+    <button class="nav-back" data-back>‹</button>
+    <div class="nav-title">论文摘要</div>
+  </div>
+  <div class="page-body" id="paperBody"></div>
+</div>
+
+<div id="tarotApp" class="screen">
+  <div class="chat-nav">
+    <button class="nav-back" data-back>‹</button>
+    <div class="nav-title">塔罗</div>
+  </div>
+  <div class="page-body" id="tarotBody"></div>
+</div>
+
+<div id="momentsApp" class="screen">
+  <div class="chat-nav">
+    <button class="nav-back" data-back>‹</button>
+    <div class="nav-title">朋友圈</div>
+    <button class="nav-menu" id="momentsNewBtn">+ 发动态</button>
+  </div>
+  <div class="page-body" id="momentsBody"></div>
+</div>
+
+<div id="choiceApp" class="screen">
+  <div class="chat-nav">
+    <button class="nav-back" data-back>‹</button>
+    <div class="nav-title">抉择</div>
+  </div>
+  <div class="page-body" id="choiceBody"></div>
+</div>
+
+<div id="surveyApp" class="screen">
+  <div class="chat-nav">
+    <button class="nav-back" data-back>‹</button>
+    <div class="nav-title">问卷</div>
+  </div>
+  <div class="page-body" id="surveyBody"></div>
+</div>
+
+<div id="lettersApp" class="screen">
+  <div class="chat-nav">
+    <button class="nav-back" data-back>‹</button>
+    <div class="nav-title">信件</div>
+    <button class="nav-menu" id="lettersNewBtn">+ 写信</button>
+  </div>
+  <div class="page-body" id="lettersBody"></div>
+</div>
+
+<div id="shoppingApp" class="screen">
+  <div class="chat-nav">
+    <button class="nav-back" data-back>‹</button>
+    <div class="nav-title">购物</div>
+    <button class="nav-menu" id="shoppingAddBtn">+ 添加</button>
+  </div>
+  <div class="page-body" id="shoppingBody"></div>
+</div>
+
+<div id="waterApp" class="screen">
+  <div class="chat-nav">
+    <button class="nav-back" data-back>‹</button>
+    <div class="nav-title">喝水</div>
+  </div>
+  <div class="page-body" id="waterBody"></div>
+</div>
+
+<div id="eatApp" class="screen">
+  <div class="chat-nav">
+    <button class="nav-back" data-back>‹</button>
+    <div class="nav-title">吃什么</div>
+  </div>
+  <div class="page-body" id="eatBody"></div>
+</div>
+
+<div id="checkinApp" class="screen">
+  <div class="chat-nav">
+    <button class="nav-back" data-back>‹</button>
+    <div class="nav-title">查岗</div>
+  </div>
+  <div class="page-body" id="checkinBody"></div>
+</div>
+
+<div id="pomodoroApp" class="screen">
+  <div class="chat-nav">
+    <button class="nav-back" data-back>‹</button>
+    <div class="nav-title">番茄钟</div>
+  </div>
+  <div class="page-body" id="pomodoroBody"></div>
+</div>
+
+<div id="musicApp" class="screen">
+  <div class="chat-nav">
+    <button class="nav-back" data-back>‹</button>
+    <div class="nav-title">音乐</div>
+    <button class="nav-menu" id="musicAddBtn">+ 添加</button>
+  </div>
+  <div class="page-body" id="musicBody"></div>
+</div>
+
+<div id="booksApp" class="screen">
+  <div class="chat-nav">
+    <button class="nav-back" data-back>‹</button>
+    <div class="nav-title">推书</div>
+  </div>
+  <div class="page-body" id="booksBody"></div>
+</div>
+
+<div id="searchApp" class="screen">
+  <div class="chat-nav">
+    <button class="nav-back" data-back>‹</button>
+    <div class="nav-title">搜索</div>
+  </div>
+  <div class="page-body" id="searchBody"></div>
+</div>
+
+<div id="settingsApp" class="screen">
+  <div class="chat-nav">
+    <button class="nav-back" data-back>‹</button>
+    <div class="nav-title">设置</div>
+  </div>
+  <div class="page-body" id="settingsBody"></div>
+</div>
+
+<div id="callScreen" class="screen">
+  <div class="call-wrap">
+    <div class="call-avatar" id="callAvatar">TA</div>
+    <div class="call-name" id="callName">TA</div>
+    <div class="call-timer" id="callTimer">00:00:00</div>
+    <div class="call-actions">
+      <button class="call-btn hangup" id="hangupBtn">挂断</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="modal">
+  <div class="modal-panel">
+    <div class="modal-head">
+      <span id="modalTitle"></span>
+      <button id="modalClose">✕</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<div class="modal" id="chatMenuModal">
+  <div class="modal-panel">
+    <div class="modal-head">
+      <span>聊天功能</span>
+      <button id="chatMenuClose">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="menu-item" data-action="search">🔍 搜索聊天记录</div>
+      <div class="menu-item" data-action="fav">⭐ 收藏</div>
+      <div class="menu-item" data-action="poke">👉 拍一拍</div>
+      <div class="menu-item" data-action="call">📞 模拟通话</div>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
