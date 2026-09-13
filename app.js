@@ -1641,7 +1641,9 @@ function renderSettingsPage() {
   const s = state.settings;
   body.innerHTML = `
     <div class="list-item"><div class="name">我的昵称</div><div class="actions"><button data-edit="myName">${esc(s.myName)}</button></div></div>
+    <div class="list-item"><div class="name">我的头像</div><div class="actions">${s.myAvatar ? `<img src="${s.myAvatar}" style="width:32px;height:32px;border-radius:4px;object-fit:cover;margin-right:6px;">` : ""}<button data-avatar="myAvatar">${s.myAvatar ? "更换" : "上传"}</button>${s.myAvatar ? `<button class="danger" data-avclear="myAvatar">清除</button>` : ""}</div></div>
     <div class="list-item"><div class="name">对方昵称</div><div class="actions"><button data-edit="taName">${esc(s.taName)}</button></div></div>
+    <div class="list-item"><div class="name">对方头像</div><div class="actions">${s.taAvatar ? `<img src="${s.taAvatar}" style="width:32px;height:32px;border-radius:4px;object-fit:cover;margin-right:6px;">` : ""}<button data-avatar="taAvatar">${s.taAvatar ? "更换" : "上传"}</button>${s.taAvatar ? `<button class="danger" data-avclear="taAvatar">清除</button>` : ""}</div></div>
     <div class="list-item"><div class="name">聊天背景色</div><div class="actions"><input type="color" value="${s.bgColor}" data-color="bgColor"></div></div>
     <div class="list-item"><div class="name">聊天背景图</div><div class="actions"><button data-bgimg>上传</button>${s.bgImage ? `<button class="danger" data-bgclear>清除</button>` : ""}</div></div>
     <div class="list-item"><div class="name">我的气泡颜色</div><div class="actions"><input type="color" value="${s.myBubbleColor}" data-color="myBubbleColor"></div></div>
