@@ -679,7 +679,52 @@ function showFavorites() {
   });
 }
 function doPoke() {
-  const pokeText = pick(state.pokeTexts) || "拍了拍";
+  openModal("拍一拍", () => {
+    const wrap = document.createElement("div");
+    wrap.innerHTML = `
+      <div class="row"><input class="input" id="pokeQuickAdd" placeholder="新增文案，回车添加"></div>
+      <div id="pokePickList"></div>
+    `;
+    const list = wrap.querySelector("#pokePickList");
+    function renderList() {
+      list.innerHTML = "";
+      if (!state.pokeTexts.length) {
+        list.innerHTML = `<div class="empty">还没有文案，上面加一条</div>`;
+        return;
+      }
+      state.pokeTexts.forEach((t, i) => {
+        const item = document.createElement("div");
+        item.className = "list-item";
+        item.innerHTML = `<div class="name" style="cursor:pointer;">${esc(t)}</div><div class="actions"><button class="danger" data-del>删除</button></div>`;
+        item.querySelector(".name").addEventListener("click", () => {
+          modal.classList.remove("open");
+          performPoke(t);
+        });
+        item.querySelector("[data-del]").addEventListener("click", () => {
+          state.pokeTexts.splice(i, 1);
+          savePokeTexts();
+          renderList();
+        });
+        list.appendChild(item);
+      });
+    }
+    renderList();
+    const inp = wrap.querySelector("#pokeQuickAdd");
+    inp.addEventListener("keydown", e => {
+      if (e.key === "Enter") {
+        const v = inp.value.trim();
+        if (!v) return;
+        state.pokeTexts.push(v);
+        savePokeTexts();
+        inp.value = "";
+        renderList();
+      }
+    });
+    return wrap;
+  });
+}
+
+function performPoke(pokeText) {
   state.messages.push({ id: uid(), type: "poke", text: `我${pokeText}`, ts: Date.now() });
   saveMessages(); renderMessages();
   if (Math.random() * 100 < state.settings.pokeBackProb) {
