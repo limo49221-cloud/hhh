@@ -207,9 +207,32 @@ function tickDesktopTime() {
 /* ========== 聊天 ========== */
 let currentQuote = null;
 
+/* ========== 时间流速 ========== */
+let taTimeSpeed = 1;
+let taTimeStart = 0;
+let taTimeBase = 0;
+
+function rollTaTime() {
+  taTimeSpeed = 1 + Math.random() * 99;
+  taTimeStart = Date.now();
+  taTimeBase = nowBeijing().getTime();
+}
+
+function updateTaTimeDisplay() {
+  const el = document.getElementById("taTimeDisplay");
+  if (!el) return;
+  const elapsedSec = (Date.now() - taTimeStart) / 1000;
+  const taMs = taTimeBase + elapsedSec * taTimeSpeed * 1000;
+  const d = new Date(taMs);
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  el.textContent = `TA 时间 ${hh}:${mm} · x${taTimeSpeed.toFixed(1)}`;
+}
+
 function openChat() {
   showScreen("chatApp");
   document.getElementById("chatTitle").textContent = state.settings.taName;
+  rollTaTime();
   renderMessages();
   applyAppearance();
 }
@@ -236,6 +259,19 @@ function renderMessages() {
     body.appendChild(sys);
   }
   state.messages.forEach(m => renderMessage(body, m));
+
+  const lastTa = [...state.messages].reverse().find(m => m.from === "ta" && m.type !== "system" && m.type !== "poke");
+  if (lastTa) {
+    const wrapper = document.getElementById("msg-" + lastTa.id);
+    if (wrapper) {
+      const timeEl = document.createElement("div");
+      timeEl.id = "taTimeDisplay";
+      timeEl.style.cssText = "font-size:11px;color:#999;text-align:left;margin:-10px 0 12px 62px;";
+      wrapper.appendChild(timeEl);
+      updateTaTimeDisplay();
+    }
+  }
+
   body.scrollTop = body.scrollHeight;
 }
 function renderMessage(body, m) {
@@ -258,6 +294,27 @@ function renderMessage(body, m) {
   const av = m.from === "me" ? state.settings.myAvatar : state.settings.taAvatar;
   if (av) avatar.innerHTML = `<img src="${av}">`;
   else avatar.textContent = m.from === "me" ? "我" : "TA";
+  if (m.from === "ta") {
+    avatar.style.cursor = "pointer";
+    avatar.addEventListener("dblclick", (e) => {
+      e.stopPropagation();
+      const taName = state.settings.taName || "TA";
+      state.messages.push({ id: uid(), type: "poke", text: `我拍了拍${taName}`, ts: Date.now() });
+      saveMessages(); renderMessages();
+      const roll = Math.random() * 100;
+      if (roll < state.settings.pokeBackProb) {
+        setTimeout(() => {
+          state.messages.push({ id: uid(), type: "poke", text: `${taName}拍了拍我`, ts: Date.now() });
+          saveMessages(); renderMessages();
+        }, 1500);
+      } else if (roll < state.settings.pokeBackProb + state.settings.pokeCardProb) {
+        setTimeout(() => {
+          const card = drawCard();
+          if (card) addBotMessage(card, { isCard: true, mood: drawMood(), intent: drawIntent() });
+        }, 1500);
+      }
+    });
+  }
   const bubble = document.createElement("div");
   bubble.className = "bubble";
   if (m.recalled) {
@@ -276,6 +333,7 @@ function renderMessage(body, m) {
       `<button class="suggest-btn" data-sg="${i}">${p.icon} ${p.name}</button>`
     ).join("");
   } else if (m.image) inner += `<img class="msg-img" src="${m.image}">`;
+  else if (m.searchLink) inner += `<div style="padding:8px 10px;background:#f0f0f0;border-radius:6px;cursor:pointer;font-size:14px;" class="search-link">🔗 点击搜索：${esc(m.searchLink.kw)}（${esc(m.searchLink.platform ? m.searchLink.platform.name : "")}）</div>`;
   else if (m.baiduImg) inner += `<div style="padding:8px;background:#f0f0f0;border-radius:6px;cursor:pointer;" class="baidu-img">🔗 点击查看百度图片：${esc(m.baiduImg)}</div>`;
   else if (m.isVoice) {
     bubble.classList.add("voice");
@@ -533,6 +591,12 @@ function initInputBar() {
     if (!v) return;
     input.value = ""; send.disabled = true; sendMessage(v);
   });
+  const pokeBtn = document.createElement("button");
+  pokeBtn.className = "input-btn";
+  pokeBtn.textContent = "💡";
+  const imgBtnEl = document.getElementById("imgBtn");
+  imgBtnEl.parentNode.insertBefore(pokeBtn, imgBtnEl);
+  pokeBtn.addEventListener("click", () => doPoke());
   document.getElementById("imgBtn").addEventListener("click", () => document.getElementById("imgFile").click());
   document.getElementById("imgFile").addEventListener("change", async () => {
     const f = document.getElementById("imgFile").files[0];
@@ -682,7 +746,8 @@ function doPoke() {
   openModal("拍一拍", () => {
     const wrap = document.createElement("div");
     wrap.innerHTML = `
-      <div class="row"><input class="input" id="pokeQuickAdd" placeholder="新增文案，回车添加"></div>
+      <div class="row"><input class="input" id="pokeNewInput" placeholder="输入新文案，回车确认"></div>
+      <div class="row"><button class="btn secondary" id="pokeBatchBtn" style="width:100%">批量添加（一行一张）</button></div>
       <div id="pokePickList"></div>
     `;
     const list = wrap.querySelector("#pokePickList");
@@ -709,16 +774,46 @@ function doPoke() {
       });
     }
     renderList();
-    const inp = wrap.querySelector("#pokeQuickAdd");
+    const inp = wrap.querySelector("#pokeNewInput");
     inp.addEventListener("keydown", e => {
       if (e.key === "Enter") {
         const v = inp.value.trim();
         if (!v) return;
-        state.pokeTexts.push(v);
-        savePokeTexts();
         inp.value = "";
-        renderList();
+        modal.classList.remove("open");
+        askNewPokeAction(v);
       }
+    });
+    wrap.querySelector("#pokeBatchBtn").addEventListener("click", () => {
+      const text = prompt("批量添加：每行一张");
+      if (!text) return;
+      text.split("\n").map(s => s.trim()).filter(Boolean).forEach(t => {
+        state.pokeTexts.push(t);
+      });
+      savePokeTexts();
+      renderList();
+    });
+    return wrap;
+  });
+}
+
+function askNewPokeAction(text) {
+  openModal("这条文案怎么处理？", () => {
+    const wrap = document.createElement("div");
+    const items = [
+      { label: "🎯 直接拍出去", fn: () => performPoke(text) },
+      { label: "💾 存进库",     fn: () => { state.pokeTexts.push(text); savePokeTexts(); toast("已存入库"); } },
+      { label: "🎯💾 拍然后存", fn: () => { state.pokeTexts.push(text); savePokeTexts(); performPoke(text); } }
+    ];
+    items.forEach(it => {
+      const div = document.createElement("div");
+      div.className = "menu-item";
+      div.textContent = it.label;
+      div.addEventListener("click", () => {
+        modal.classList.remove("open");
+        it.fn();
+      });
+      wrap.appendChild(div);
     });
     return wrap;
   });
@@ -727,17 +822,17 @@ function doPoke() {
 function performPoke(pokeText) {
   state.messages.push({ id: uid(), type: "poke", text: `我${pokeText}`, ts: Date.now() });
   saveMessages(); renderMessages();
-  if (Math.random() * 100 < state.settings.pokeBackProb) {
+  const roll = Math.random() * 100;
+  if (roll < state.settings.pokeBackProb) {
     setTimeout(() => {
       const backText = pick(state.pokeTexts) || "拍了拍";
       state.messages.push({ id: uid(), type: "poke", text: `${state.settings.taName}${backText}`, ts: Date.now() });
       saveMessages(); renderMessages();
-      if (Math.random() * 100 < state.settings.pokeCardProb) {
-        setTimeout(() => {
-          const card = drawCard();
-          if (card) addBotMessage(card, { isCard: true, mood: drawMood(), intent: drawIntent() });
-        }, 800);
-      }
+    }, 1500);
+  } else if (roll < state.settings.pokeBackProb + state.settings.pokeCardProb) {
+    setTimeout(() => {
+      const card = drawCard();
+      if (card) addBotMessage(card, { isCard: true, mood: drawMood(), intent: drawIntent() });
     }, 1500);
   }
 }
@@ -1802,8 +1897,13 @@ function applyAppearance() {
 function init() {
   renderDesktop();
   tickDesktopTime();
-  setInterval(tickDesktopTime, 1000 * 30);
+  setInterval(() => {
+    const chat = document.getElementById("chatApp");
+    if (chat && chat.classList.contains("active")) updateTaTimeDisplay();
+  }, 10 * 1000);
   initInputBar();
+  const pokeMenuItem = document.querySelector('#chatMenuModal .menu-item[data-action="poke"]');
+  if (pokeMenuItem) pokeMenuItem.remove();
   applyAppearance();
   document.querySelectorAll(".dock-item").forEach(el => {
     el.addEventListener("click", () => {
