@@ -1748,15 +1748,8 @@ function applyAppearance() {
   document.documentElement.style.fontSize = state.settings.fontSize + "px";
   document.querySelectorAll(".msg-row.me .bubble").forEach(b => b.style.background = state.settings.myBubbleColor);
   document.querySelectorAll(".msg-row.bot .bubble").forEach(b => b.style.background = state.settings.taBubbleColor);
-  let st = document.getElementById("bubbleArrowStyle");
-  if (!st) {
-    st = document.createElement("style");
-    st.id = "bubbleArrowStyle";
-    document.head.appendChild(st);
-  }
-  st.textContent =
-    `.msg-row.me .bubble::before { border-left-color: ${state.settings.myBubbleColor} !important; }` +
-    `.msg-row.bot .bubble::before { border-right-color: ${state.settings.taBubbleColor} !important; }`;
+  document.documentElement.style.setProperty("--me-bubble", state.settings.myBubbleColor);
+  document.documentElement.style.setProperty("--ta-bubble", state.settings.taBubbleColor);
   applyChatBackground();
 }
 

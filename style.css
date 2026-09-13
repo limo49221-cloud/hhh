@@ -186,14 +186,14 @@ html, body {
   content: ""; position: absolute;
   left: -6px; top: 12px;
   border: 6px solid transparent;
-  border-right-color: #fff;
+  border-right-color: var(--ta-bubble, #fff);
   border-left: 0;
 }
 .msg-row.me .bubble::before {
   content: ""; position: absolute;
   right: -6px; top: 12px;
   border: 6px solid transparent;
-  border-left-color: #95ec69;
+  border-left-color: var(--me-bubble, #95ec69);
   border-right: 0;
 }
 .bubble.card {
