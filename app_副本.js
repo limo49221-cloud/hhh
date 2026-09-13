@@ -1188,6 +1188,10 @@ function openSearch() {
 }
 
 /* ========== 其他功能占位 ========== */
+function openSurvey()   { showScreen("surveyApp");  document.getElementById("surveyBody").innerHTML  = `<div class="empty">功能开发中…</div>`; }
+function openLetters()  { showScreen("lettersApp"); document.getElementById("lettersBody").innerHTML = `<div class="empty">功能开发中…</div>`; }
+function openEat()      { showScreen("eatApp");     document.getElementById("eatBody").innerHTML     = `<div class="empty">功能开发中…</div>`; }
+function openCheckin()  { showScreen("checkinApp"); document.getElementById("checkinBody").innerHTML = `<div class="empty">功能开发中…</div>`; }
 /* ========== 购物（心愿清单） ========== */
 function openShopping() {
   showScreen("shoppingApp");
