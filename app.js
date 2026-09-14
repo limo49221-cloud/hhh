@@ -47,7 +47,13 @@ const state = {
   messages: store.get("messages", []),
   favoritesMine: store.get("favoritesMine", []),
   favoritesTa: store.get("favoritesTa", []),
-  emojis: store.get("emojis", []),
+  emojis: (() => {
+    const e = store.get("emojis", null);
+    if (e && typeof e === "object" && !Array.isArray(e) && Array.isArray(e.emoji) && Array.isArray(e.kaomoji) && Array.isArray(e.sticker)) {
+      return e;
+    }
+    return { emoji: [], kaomoji: [], sticker: [] };
+  })(),
   moments: store.get("moments", []),
   water: store.get("water", { date: "", count: 0, goal: 8 }),
   wishlist: store.get("wishlist", []),
@@ -148,10 +154,11 @@ const SUGGEST_TYPES = [
   ]}
 ];
 
-const ICONS_VERSION = 4;
+const ICONS_VERSION = 5;
 const DEFAULT_ICONS = [
   { id: "chat",      name: "聊天",     icon: "💬", action: "chat" },
   { id: "cards",     name: "字卡管理", icon: "🎴", action: "cards" },
+  { id: "emojis",    name: "表情库",   icon: "😀", action: "emojis" },
   { id: "paper",     name: "论文",     icon: "📄", action: "paper" },
   { id: "tarot",     name: "塔罗",     icon: "🔮", action: "tarot" },
   { id: "moments",   name: "朋友圈",   icon: "🌿", action: "moments" },
@@ -195,7 +202,8 @@ function renderDesktop() {
           moments: openMoments, choice: openChoice, survey: openSurvey,
           letters: openLetters, shopping: openShopping, water: openWater,
           eat: openEat, checkin: openCheckin, pomodoro: openPomodoro,
-          music: openMusic, books: openBooks, search: openSearch, settings: openSettings
+          music: openMusic, books: openBooks, search: openSearch, settings: openSettings,
+          emojis: openEmojiManager
         };
         const fn = map[ic.action];
         if (fn) fn();
@@ -571,11 +579,13 @@ function getDishPool() {
   return { from: "甜品", dishes: cat.cards.map(c => c.text).filter(Boolean) };
 }
 
+const CUISINE_NAMES = ["中餐", "亚洲", "欧洲", "美洲", "非洲"];
+
 function getCuisinePools() {
   const pools = [];
   state.cards.categories.forEach(cat => {
     if (cat.enabled === false) return;
-    if (!cat.name.startsWith("菜系·")) return;
+    if (!CUISINE_NAMES.includes(cat.name)) return;
     if (!cat.cards.length) return;
     pools.push({ from: cat.name, dishes: cat.cards.map(c => c.text).filter(Boolean) });
   });
@@ -1011,7 +1021,210 @@ document.getElementById("hangupBtn").addEventListener("click", () => {
   state.messages.push({ id: uid(), type: "system", text: `通话结束 · 时长 ${Math.floor(s/60)}分${s%60}秒`, ts: Date.now() });
   saveMessages(); showScreen("chatApp"); renderMessages();
 });
+/* ========== 表情库 ========== */
+let emojiTab = "emoji";
 
+function openEmojiManager() {
+  showScreen("emojisApp");
+  renderEmojiManager();
+}
+
+function renderEmojiManager() {
+  const body = document.getElementById("emojisBody");
+  if (!body) {
+    console.warn("缺少 #emojisApp / #emojisBody 容器");
+    return;
+  }
+  body.innerHTML = "";
+
+  const tabs = document.createElement("div");
+  tabs.className = "emoji-tabs";
+  tabs.style.cssText = "display:flex;gap:8px;margin-bottom:12px;";
+  const tabDefs = [
+    { key: "emoji",    label: "Emoji" },
+    { key: "kaomoji",  label: "颜文字" },
+    { key: "sticker",  label: "表情包" }
+  ];
+  tabDefs.forEach(t => {
+    const btn = document.createElement("button");
+    btn.className = "btn" + (emojiTab === t.key ? "" : " secondary");
+    btn.style.flex = "1";
+    btn.textContent = t.label + `（${state.emojis[t.key].length}）`;
+    btn.addEventListener("click", () => {
+      emojiTab = t.key;
+      renderEmojiManager();
+    });
+    tabs.appendChild(btn);
+  });
+  body.appendChild(tabs);
+
+  const toolBar = document.createElement("div");
+  toolBar.className = "row";
+  toolBar.style.marginBottom = "12px";
+  toolBar.innerHTML = `<button class="btn secondary" id="emojiDupBtn" style="width:100%;">❗️ 查重</button>`;
+  body.appendChild(toolBar);
+  toolBar.querySelector("#emojiDupBtn").addEventListener("click", () => openEmojiDupCheck(emojiTab));
+
+  const addArea = document.createElement("div");
+  addArea.className = "row";
+  addArea.style.marginBottom = "12px";
+  if (emojiTab === "emoji" || emojiTab === "kaomoji") {
+    addArea.innerHTML = `
+      <input class="input" id="emojiNewInput" placeholder="${emojiTab === "emoji" ? "输入一个 emoji，比如 😀" : "输入颜文字，比如 (｡･ω･｡)"}">
+      <button class="btn" id="emojiNewBtn">添加</button>
+    `;
+  } else {
+    addArea.innerHTML = `
+      <input type="file" id="emojiNewFile" accept="image/*" multiple hidden>
+      <button class="btn" id="emojiNewImgBtn" style="width:100%;">上传图片</button>
+    `;
+  }
+  body.appendChild(addArea);
+
+  const listWrap = document.createElement("div");
+  listWrap.id = "emojiMgrList";
+  body.appendChild(listWrap);
+
+  const renderList = () => {
+    const list = state.emojis[emojiTab];
+    listWrap.innerHTML = "";
+    if (!list.length) {
+      listWrap.innerHTML = `<div class="empty">还没有内容</div>`;
+      return;
+    }
+    list.forEach((item, i) => {
+      const row = document.createElement("div");
+      row.className = "list-item";
+      const isImg = item.startsWith("data:");
+      const preview = isImg
+        ? `<img src="${item}" style="width:48px;height:48px;object-fit:cover;border-radius:6px;">`
+        : `<span style="font-size:22px;word-break:break-all;">${esc(item)}</span>`;
+      row.innerHTML = `
+        <div class="name">${preview}</div>
+        <div class="actions">
+          <button class="danger" data-del>删除</button>
+        </div>
+      `;
+      row.querySelector("[data-del]").addEventListener("click", () => {
+        if (!confirm("删除？")) return;
+        list.splice(i, 1);
+        saveEmojis();
+        renderEmojiManager();
+      });
+      listWrap.appendChild(row);
+    });
+  };
+  renderList();
+
+  if (emojiTab === "emoji" || emojiTab === "kaomoji") {
+    const inp = addArea.querySelector("#emojiNewInput");
+    const btn = addArea.querySelector("#emojiNewBtn");
+    const addOne = () => {
+      const v = inp.value.trim();
+      if (!v) return;
+      state.emojis[emojiTab].push(v);
+      saveEmojis();
+      inp.value = "";
+      renderEmojiManager();
+    };
+    btn.addEventListener("click", addOne);
+    inp.addEventListener("keydown", e => { if (e.key === "Enter") addOne(); });
+  } else {
+    const fileInp = addArea.querySelector("#emojiNewFile");
+    addArea.querySelector("#emojiNewImgBtn").addEventListener("click", () => fileInp.click());
+    fileInp.addEventListener("change", async () => {
+      const files = [...fileInp.files];
+      if (!files.length) return;
+      for (const f of files) {
+        const data = await compressImage(f, 400, 0.85);
+        state.emojis.sticker.push(data);
+      }
+      saveEmojis();
+      fileInp.value = "";
+      renderEmojiManager();
+    });
+  }
+}
+
+function openEmojiDupCheck(tabKey) {
+  const list = state.emojis[tabKey];
+  const pairs = [];
+  for (let i = 0; i < list.length; i++) {
+    for (let j = i + 1; j < list.length; j++) {
+      if (list[i] === list[j]) {
+        pairs.push([i, j]);
+      }
+    }
+  }
+
+  const dupIdx = new Set();
+  pairs.forEach(([i, j]) => { dupIdx.add(i); dupIdx.add(j); });
+
+  openModal("❗️ 表情查重", () => {
+    const wrap = document.createElement("div");
+    if (!dupIdx.size) {
+      wrap.innerHTML = `<div class="empty">没有重复项</div>`;
+      return wrap;
+    }
+
+    const info = document.createElement("div");
+    info.style.cssText = "font-size:13px;color:#666;margin-bottom:12px;";
+    info.textContent = `共 ${dupIdx.size} 个重复项`;
+    wrap.appendChild(info);
+
+    const listWrap = document.createElement("div");
+    listWrap.id = "emojiDupList";
+    wrap.appendChild(listWrap);
+
+    const renderList = () => {
+      listWrap.innerHTML = "";
+      const liveIdx = [...dupIdx].filter(i => i < state.emojis[tabKey].length);
+      if (!liveIdx.length) {
+        listWrap.innerHTML = `<div class="empty">没有重复项</div>`;
+        return;
+      }
+      const seen = new Set();
+      liveIdx.forEach(i => {
+        const content = state.emojis[tabKey][i];
+        if (seen.has(content)) return;
+        seen.add(content);
+        const row = document.createElement("div");
+        row.className = "list-item";
+        const isImg = content.startsWith("data:");
+        const preview = isImg
+          ? `<img src="${content}" style="width:48px;height:48px;object-fit:cover;border-radius:6px;">`
+          : `<span style="font-size:20px;">${esc(content)}</span>`;
+        row.innerHTML = `
+          <div class="name">${preview}</div>
+          <div class="actions">
+            <button data-keep>只留一个</button>
+            <button class="danger" data-delall>全删</button>
+          </div>
+        `;
+        row.querySelector("[data-keep]").addEventListener("click", () => {
+          let firstKept = false;
+          state.emojis[tabKey] = state.emojis[tabKey].filter(x => {
+            if (x !== content) return true;
+            if (!firstKept) { firstKept = true; return true; }
+            return false;
+          });
+          saveEmojis();
+          renderEmojiManager();
+          openEmojiDupCheck(tabKey);
+        });
+        row.querySelector("[data-delall]").addEventListener("click", () => {
+          state.emojis[tabKey] = state.emojis[tabKey].filter(x => x !== content);
+          saveEmojis();
+          renderEmojiManager();
+          openEmojiDupCheck(tabKey);
+        });
+        listWrap.appendChild(row);
+      });
+    };
+    renderList();
+    return wrap;
+  });
+}
 /* ========== 字卡管理 ========== */
 let batchMode = false;
 let selectedCards = new Set();
@@ -2350,7 +2563,8 @@ function init() {
     ]});
     saveCards();
   }
-  ["菜系·中国·川菜", "菜系·中国·粤菜", "菜系·中国·鲁菜", "菜系·法国", "菜系·西班牙", "甜品"].forEach(name => {
+  state.cards.categories = state.cards.categories.filter(c => !c.name.startsWith("菜系·"));
+  ["中餐", "亚洲", "欧洲", "美洲", "非洲", "甜品"].forEach(name => {
     if (!state.cards.categories.find(c => c.name === name)) {
       state.cards.categories.push({ id: uid(), name, enabled: true, cards: [] });
     }
