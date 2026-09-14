@@ -13,26 +13,36 @@ const store = {
   }
 };
 
+const DEFAULT_SETTINGS = {
+  myName: "我", taName: "TA",
+  myAvatar: "", taAvatar: "",
+  bgColor: "#ededed", bgImage: "",
+  myBubbleColor: "#95ec69", taBubbleColor: "#ffffff",
+  fontSize: 17,
+  replyDelayMin: 1, replyDelayMax: 3,
+  readNoReplyProb: 10,
+  pokeBackProb: 50, pokeCardProb: 50,
+  voiceProb: 15, imgProb: 15,
+  callRejectProb: 50,
+  moodProb: 30, intentProb: 30,
+  taMomentsProb: 30,
+  taCommentProb: 50,
+  searchLinkProb: 10,
+  suggestProb: 5,
+  surveyProb: 5,
+  eatProb: 5,
+  eatDishRatio: 50
+};
+
 const state = {
-  settings: store.get("settings", {
-    myName: "我", taName: "TA",
-    myAvatar: "", taAvatar: "",
-    bgColor: "#ededed", bgImage: "",
-    myBubbleColor: "#95ec69", taBubbleColor: "#ffffff",
-    fontSize: 17,
-    replyDelayMin: 1, replyDelayMax: 3,
-    readNoReplyProb: 10,
-    pokeBackProb: 50, pokeCardProb: 50,
-    voiceProb: 15, imgProb: 15,
-    callRejectProb: 50,
-    moodProb: 30, intentProb: 30,
-    taMomentsProb: 30,
-    taCommentProb: 50,    
-    searchLinkProb: 10,
-    suggestProb: 5,
-    surveyProb: 5
-  }),
-  cards: store.get("cards", { categories: [] }),
+  settings: Object.assign({}, DEFAULT_SETTINGS, store.get("settings", {})),
+  cards: (() => {
+    const c = store.get("cards", { categories: [] });
+    if (!c || typeof c !== "object" || !Array.isArray(c.categories)) {
+      return { categories: [] };
+    }
+    return c;
+  })(),
   pokeTexts: store.get("pokeTexts", ["拍了拍我的头", "拍了拍我的肩膀", "拍了拍我的脸"]),
   messages: store.get("messages", []),
   favoritesMine: store.get("favoritesMine", []),
@@ -42,6 +52,9 @@ const state = {
   water: store.get("water", { date: "", count: 0, goal: 8 }),
   wishlist: store.get("wishlist", []),
   suggestHistory: store.get("suggestHistory", []),
+  checkins: store.get("checkins", []),
+  letters: store.get("letters", []),
+  dupIgnored: store.get("dupIgnored", []),
   pomodoro: store.get("pomodoro", { focusMin: 25, shortMin: 5, longMin: 15, todayCount: 0, totalCount: 0, date: "" }),
   desktopIcons: store.get("desktopIcons", null)
 };
@@ -57,6 +70,9 @@ function saveMoments() { store.set("moments", state.moments); }
 function saveWater() { store.set("water", state.water); }
 function saveWishlist() { store.set("wishlist", state.wishlist); }
 function saveSuggestHistory() { store.set("suggestHistory", state.suggestHistory); }
+function saveCheckins() { store.set("checkins", state.checkins); }
+function saveLetters() { store.set("letters", state.letters); }
+function saveDupIgnored() { store.set("dupIgnored", state.dupIgnored); }
 function savePomodoro() { store.set("pomodoro", state.pomodoro); }
 function saveDesktopIcons() { store.set("desktopIcons", state.desktopIcons); }
 
@@ -191,10 +207,10 @@ function renderDesktop() {
     dot.className = "dot" + (p === 0 ? " active" : "");
     dotsEl.appendChild(dot);
   }
-  pagesEl.addEventListener("scroll", () => {
+  pagesEl.onscroll = () => {
     const idx = Math.round(pagesEl.scrollLeft / pagesEl.clientWidth);
     dotsEl.querySelectorAll(".dot").forEach((d, i) => d.classList.toggle("active", i === idx));
-  }, { passive: true });
+  };
 }
 
 function tickDesktopTime() {
@@ -333,6 +349,9 @@ function renderMessage(body, m) {
     inner += st.platforms.map((p, i) =>
       `<button class="suggest-btn" data-sg="${i}">${p.icon} ${p.name}</button>`
     ).join("");
+  } else if (m.eatSuggest) {
+    inner += `<div style="font-size:15px;font-weight:600;">今天吃${esc(m.eatSuggest.dish)}吧</div>`;
+    if (m.eatSuggest.from) inner += `<div style="font-size:12px;color:#999;margin-top:4px;">来自 ${esc(m.eatSuggest.from)}</div>`;
   } else if (m.survey) {
     if (m.survey.answered) {
       inner += `<div style="font-size:15px;font-weight:600;margin-bottom:6px;">📋 ${esc(m.survey.q)}</div>`;
@@ -545,6 +564,55 @@ function taAskSurvey() {
   addBotMessage("", { survey: { q: picked.q, opts: picked.opts, answered: null } });
   return true;
 }
+function getDishPool() {
+  const cat = state.cards.categories.find(c => c.name === "甜品");
+  if (!cat || cat.enabled === false) return null;
+  if (!cat.cards.length) return null;
+  return { from: "甜品", dishes: cat.cards.map(c => c.text).filter(Boolean) };
+}
+
+function getCuisinePools() {
+  const pools = [];
+  state.cards.categories.forEach(cat => {
+    if (cat.enabled === false) return;
+    if (!cat.name.startsWith("菜系·")) return;
+    if (!cat.cards.length) return;
+    pools.push({ from: cat.name, dishes: cat.cards.map(c => c.text).filter(Boolean) });
+  });
+  return pools;
+}
+
+function pickDish() {
+  const ratio = state.settings.eatDishRatio ?? 50;
+  const goCuisine = Math.random() * 100 < ratio;
+  if (goCuisine) {
+    const pools = getCuisinePools();
+    if (pools.length) {
+      const pool = pick(pools);
+      const dish = pick(pool.dishes);
+      if (dish) return { dish, from: pool.from };
+    }
+  }
+  const sweet = getDishPool();
+  if (sweet) {
+    const dish = pick(sweet.dishes);
+    if (dish) return { dish, from: sweet.from };
+  }
+  const pools = getCuisinePools();
+  if (pools.length) {
+    const pool = pick(pools);
+    const dish = pick(pool.dishes);
+    if (dish) return { dish, from: pool.from };
+  }
+  return null;
+}
+
+function taSuggestEat() {
+  const result = pickDish();
+  if (!result) return false;
+  addBotMessage("", { eatSuggest: { dish: result.dish, from: result.from } });
+  return true;
+}
 function taSuggest() {
   const words = [];
   state.messages.slice(-10).forEach(m => {
@@ -584,6 +652,9 @@ function taReply() {
     if (Math.random() * 100 < (state.settings.suggestProb || 0)) {
       if (taSuggest()) return;
     }
+    if (Math.random() * 100 < (state.settings.eatProb || 0)) {
+      if (taSuggestEat()) return;
+    }
     const card = drawCard();
     if (!card) { addBotMessage("（字卡库是空的，去字卡管理加几张吧）"); return; }
     const r = Math.random() * 100;
@@ -599,7 +670,10 @@ function taReply() {
     const searchP = state.settings.searchLinkProb || 0;
     if (r < searchP) {
       const kwFixed = card.split(/\s+/)[0].slice(0, 10);
-      const platform = SEARCH_PLATFORMS[Math.floor(Math.random() * SEARCH_PLATFORMS.length)];
+      const platformList = (typeof SEARCH_PLATFORMS !== "undefined" && SEARCH_PLATFORMS.length)
+        ? SEARCH_PLATFORMS
+        : [{ name: "百度", icon: "🔍", url: "https://www.baidu.com/s?wd=" }];
+      const platform = platformList[Math.floor(Math.random() * platformList.length)];
       addBotMessage("", { ...opts, searchLink: { kw: kwFixed, platform } });
     } else if (r < searchP + imgP) {
       const kwFixed = card.split(/\s+/)[0].slice(0, 10);
@@ -625,6 +699,7 @@ function addBotMessage(text, opts = {}) {
     searchLink: opts.searchLink || null,
     suggest: opts.suggest || null,
     survey: opts.survey || null,
+    eatSuggest: opts.eatSuggest || null,
     words: opts.words || null
   };
   state.messages.push(msg);
@@ -955,8 +1030,19 @@ function updateBatchCount() { document.getElementById("batchCount").textContent 
 function renderCardsPage() {
   const body = document.getElementById("cardsBody");
   body.innerHTML = "";
+
+  const toolBar = document.createElement("div");
+  toolBar.className = "row";
+  toolBar.style.marginBottom = "12px";
+  toolBar.innerHTML = `<button class="btn secondary" id="cardDupBtn" style="width:100%;">❗️ 查重</button>`;
+  body.appendChild(toolBar);
+  toolBar.querySelector("#cardDupBtn").addEventListener("click", openCardDupCheck);
+
   if (state.cards.categories.length === 0) {
-    body.innerHTML = `<div class="empty">还没有分类，点右上角“+ 分类”新建</div>`;
+    const empty = document.createElement("div");
+    empty.className = "empty";
+    empty.textContent = "还没有分类，点右上角“+ 分类”新建";
+    body.appendChild(empty);
     return;
   }
   state.cards.categories.forEach(cat => {
@@ -985,6 +1071,197 @@ function renderCardsPage() {
         body.appendChild(item);
       });
     }
+  });
+}
+function cardSimilarity(a, b) {
+  a = String(a).trim();
+  b = String(b).trim();
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  const setA = new Set(a.split(""));
+  const setB = new Set(b.split(""));
+  let inter = 0;
+  setA.forEach(ch => { if (setB.has(ch)) inter++; });
+  const union = setA.size + setB.size - inter;
+  if (union === 0) return 0;
+  return inter / union;
+}
+
+function makeDupKey(ids) {
+  return [...ids].sort().join("|");
+}
+
+function openCardDupCheck() {
+  const all = [];
+  state.cards.categories.forEach(cat => {
+    cat.cards.forEach(c => {
+      all.push({ catId: cat.id, catName: cat.name, card: c });
+    });
+  });
+
+  const pairs = [];
+  for (let i = 0; i < all.length; i++) {
+    for (let j = i + 1; j < all.length; j++) {
+      const sim = cardSimilarity(all[i].card.text, all[j].card.text);
+      if (sim >= 0.9) {
+        pairs.push({ a: all[i], b: all[j] });
+      }
+    }
+  }
+
+  const groups = [];
+  pairs.forEach(p => {
+    const ids = [p.a.card.id, p.b.card.id];
+    let placed = false;
+    for (const g of groups) {
+      if (g.ids.has(p.a.card.id) || g.ids.has(p.b.card.id)) {
+        g.ids.add(p.a.card.id);
+        g.ids.add(p.b.card.id);
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) {
+      groups.push({ ids: new Set(ids) });
+    }
+  });
+
+  let merged = true;
+  while (merged) {
+    merged = false;
+    for (let i = 0; i < groups.length; i++) {
+      for (let j = i + 1; j < groups.length; j++) {
+        let overlap = false;
+        groups[i].ids.forEach(id => { if (groups[j].ids.has(id)) overlap = true; });
+        if (overlap) {
+          groups[j].ids.forEach(id => groups[i].ids.add(id));
+          groups.splice(j, 1);
+          merged = true;
+          break;
+        }
+      }
+      if (merged) break;
+    }
+  }
+
+  const ignoredSet = new Set(state.dupIgnored || []);
+  const finalGroups = [];
+  groups.forEach(g => {
+    const key = makeDupKey([...g.ids]);
+    if (ignoredSet.has(key)) return;
+    const cards = all.filter(x => g.ids.has(x.card.id));
+    finalGroups.push({ key, cards });
+  });
+
+  openModal("❗️ 字卡查重", () => {
+    const wrap = document.createElement("div");
+
+    if (!finalGroups.length) {
+      wrap.innerHTML = `<div class="empty">没有发现需要处理的相似字卡</div>`;
+      const resetBtn = document.createElement("button");
+      resetBtn.className = "btn secondary";
+      resetBtn.style.cssText = "width:100%;margin-top:12px;";
+      resetBtn.textContent = "恢复所有已忽略的组";
+      resetBtn.addEventListener("click", () => {
+        if (!confirm("清空所有已忽略的记录？下次会重新提醒。")) return;
+        state.dupIgnored = [];
+        saveDupIgnored();
+        modal.classList.remove("open");
+        openCardDupCheck();
+      });
+      wrap.appendChild(resetBtn);
+      return wrap;
+    }
+
+    const info = document.createElement("div");
+    info.style.cssText = "font-size:13px;color:#666;margin-bottom:12px;";
+    info.textContent = `共 ${finalGroups.length} 组相似`;
+    wrap.appendChild(info);
+
+    const listWrap = document.createElement("div");
+    listWrap.id = "dupList";
+    wrap.appendChild(listWrap);
+
+    const renderList = () => {
+      listWrap.innerHTML = "";
+      const groupsNow = [];
+
+      finalGroups.forEach(fg => {
+        const liveCards = fg.cards.filter(c => {
+          const cat = state.cards.categories.find(x => x.id === c.catId);
+          return cat && cat.cards.some(cc => cc.id === c.card.id);
+        });
+        if (liveCards.length >= 2) {
+          groupsNow.push({ key: fg.key, cards: liveCards });
+        }
+      });
+
+      if (!groupsNow.length) {
+        listWrap.innerHTML = `<div class="empty">没有发现需要处理的相似字卡</div>`;
+        return;
+      }
+
+      groupsNow.forEach((g, gi) => {
+        const box = document.createElement("div");
+        box.style.cssText = "border:1px solid #eee;border-radius:8px;padding:10px;margin-bottom:10px;";
+
+        const title = document.createElement("div");
+        title.style.cssText = "font-size:13px;color:#999;margin-bottom:8px;";
+        title.textContent = `第 ${gi + 1} 组（${g.cards.length} 张）`;
+        box.appendChild(title);
+
+        g.cards.forEach(entry => {
+          const item = document.createElement("div");
+          item.className = "list-item";
+          item.style.padding = "6px 0";
+          item.innerHTML = `
+            <div class="name">
+              <span>${esc(entry.card.text)}</span>
+              <div style="font-size:12px;color:#999;margin-top:2px;">来自：${esc(entry.catName)}</div>
+            </div>
+            <div class="actions">
+              <button class="danger" data-del>删除</button>
+            </div>
+          `;
+          item.querySelector("[data-del]").addEventListener("click", () => {
+            if (!confirm(`删除「${entry.card.text}」？`)) return;
+            const cat = state.cards.categories.find(c => c.id === entry.catId);
+            if (!cat) return;
+            cat.cards = cat.cards.filter(c => c.id !== entry.card.id);
+            saveCards();
+            renderCardsPage();
+            renderList();
+          });
+          box.appendChild(item);
+        });
+
+        const keepBtn = document.createElement("button");
+        keepBtn.className = "btn secondary";
+        keepBtn.style.cssText = "width:100%;margin-top:6px;";
+        keepBtn.textContent = "这组都留下（不再提醒）";
+        keepBtn.addEventListener("click", () => {
+          state.dupIgnored = state.dupIgnored || [];
+          const liveIds = g.cards.map(x => x.card.id);
+          const key = makeDupKey(liveIds);
+          if (!state.dupIgnored.includes(key)) {
+            state.dupIgnored.push(key);
+          }
+          const oldKey = g.key;
+          if (oldKey && oldKey !== key && !state.dupIgnored.includes(oldKey)) {
+            state.dupIgnored.push(oldKey);
+          }
+          saveDupIgnored();
+          toast("已忽略这组");
+          renderList();
+        });
+        box.appendChild(keepBtn);
+
+        listWrap.appendChild(box);
+      });
+    };
+
+    renderList();
+    return wrap;
   });
 }
 document.getElementById("selectAllBtn").addEventListener("click", () => {
@@ -1048,9 +1325,9 @@ function openCategory(catId) {
         item.querySelector("[data-edit]").addEventListener("click", () => {
           const v = prompt("编辑字卡内容：", c.text);
           if (v === null) return;
-          c.text = v.trim(); saveCards(); renderList(); toast("已保存");
+          c.text = v.trim(); saveCards(); renderList(); renderCardsPage(); toast("已保存");
         });
-        item.querySelector("[data-del]").addEventListener("click", () => { cat.cards.splice(i, 1); saveCards(); renderList(); });
+        item.querySelector("[data-del]").addEventListener("click", () => { cat.cards.splice(i, 1); saveCards(); renderList(); renderCardsPage(); });
         list.appendChild(item);
       });
     }
@@ -1059,7 +1336,7 @@ function openCategory(catId) {
     function addOne() {
       const v = inp.value.trim(); if (!v) return;
       cat.cards.push({ id: uid(), text: v });
-      saveCards(); inp.value = ""; renderList(); inp.focus();
+      saveCards(); inp.value = ""; renderList(); renderCardsPage(); inp.focus();
     }
     wrap.querySelector("#addCardBtn").addEventListener("click", addOne);
     inp.addEventListener("keydown", e => { if (e.key === "Enter") addOne(); });
@@ -1069,7 +1346,7 @@ function openCategory(catId) {
       text.split("\n").map(s => s.trim()).filter(Boolean).forEach(t => {
         cat.cards.push({ id: uid(), text: t });
       });
-      saveCards(); renderList();
+      saveCards(); renderList(); renderCardsPage();
     });
     return wrap;
   });
@@ -1495,7 +1772,31 @@ function renderSurvey() {
   });
 }
 function openLetters()  { showScreen("lettersApp"); document.getElementById("lettersBody").innerHTML = `<div class="empty">功能开发中…</div>`; }
-function openEat()      { showScreen("eatApp");     document.getElementById("eatBody").innerHTML     = `<div class="empty">功能开发中…</div>`; }
+function openEat() {
+  showScreen("eatApp");
+  renderEat();
+}
+
+function renderEat() {
+  const body = document.getElementById("eatBody");
+  body.innerHTML = `
+    <div class="eat-result" id="eatResult">点下方按钮抽一个</div>
+    <button class="paper-btn" id="eatRollBtn">抽一个</button>
+    <div id="eatFrom" style="text-align:center;font-size:13px;color:#999;margin-top:8px;"></div>
+  `;
+  body.querySelector("#eatRollBtn").addEventListener("click", () => {
+    const result = pickDish();
+    const res = body.querySelector("#eatResult");
+    const from = body.querySelector("#eatFrom");
+    if (!result) {
+      res.textContent = "菜库是空的，去字卡管理加几道菜";
+      from.textContent = "";
+      return;
+    }
+    res.textContent = result.dish;
+    from.textContent = "来自 " + result.from;
+  });
+}
 function openCheckin()  { showScreen("checkinApp"); document.getElementById("checkinBody").innerHTML = `<div class="empty">功能开发中…</div>`; }
 /* ========== 购物（心愿清单） ========== */
 function openShopping() {
@@ -1918,6 +2219,8 @@ function renderSettingsPage() {
     <div class="list-item"><div class="name">随机搜索链接（${s.searchLinkProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.searchLinkProb}" data-range="searchLinkProb"></div></div>
     <div class="list-item"><div class="name">随机推荐（${s.suggestProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.suggestProb}" data-range="suggestProb"></div></div>
     <div class="list-item"><div class="name">TA 出题概率（${s.surveyProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.surveyProb}" data-range="surveyProb"></div></div>
+    <div class="list-item"><div class="name">TA 发吃的（${s.eatProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.eatProb}" data-range="eatProb"></div></div>
+    <div class="list-item"><div class="name">菜系比例（${s.eatDishRatio}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.eatDishRatio}" data-range="eatDishRatio"></div></div>
     <div class="list-item"><div class="name">拍一拍文案库</div><div class="actions"><button data-pokemgr>管理（${state.pokeTexts.length}）</button></div></div>`;
   body.querySelectorAll("[data-edit]").forEach(btn => {
     btn.addEventListener("click", () => {
@@ -2047,6 +2350,14 @@ function init() {
     ]});
     saveCards();
   }
+  ["菜系·中国·川菜", "菜系·中国·粤菜", "菜系·中国·鲁菜", "菜系·法国", "菜系·西班牙", "甜品"].forEach(name => {
+    if (!state.cards.categories.find(c => c.name === name)) {
+      state.cards.categories.push({ id: uid(), name, enabled: true, cards: [] });
+    }
+  });
+  saveCards();
+  if (!Array.isArray(state.checkins)) { state.checkins = []; saveCheckins(); }
+  if (!Array.isArray(state.letters))  { state.letters  = []; saveLetters();  }
 }
 
 init();
