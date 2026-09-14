@@ -22,7 +22,7 @@ const DEFAULT_SETTINGS = {
   replyDelayMin: 1, replyDelayMax: 3,
   readNoReplyProb: 10,
   pokeBackProb: 50, pokeCardProb: 50,
-  voiceProb: 15, imgProb: 15,
+  voiceProb: 15, imgProb: 15, taStickerProb: 20,
   callRejectProb: 50,
   moodProb: 30, intentProb: 30,
   taMomentsProb: 30,
@@ -56,6 +56,7 @@ const state = {
   })(),
   moments: store.get("moments", []),
   water: store.get("water", { date: "", count: 0, goal: 8 }),
+  todos: store.get("todos", []),
   wishlist: store.get("wishlist", []),
   suggestHistory: store.get("suggestHistory", []),
   checkins: store.get("checkins", []),
@@ -74,6 +75,7 @@ function saveFavTa() { store.set("favoritesTa", state.favoritesTa); }
 function saveEmojis() { store.set("emojis", state.emojis); }
 function saveMoments() { store.set("moments", state.moments); }
 function saveWater() { store.set("water", state.water); }
+function saveTodos() { store.set("todos", state.todos); }
 function saveWishlist() { store.set("wishlist", state.wishlist); }
 function saveSuggestHistory() { store.set("suggestHistory", state.suggestHistory); }
 function saveCheckins() { store.set("checkins", state.checkins); }
@@ -154,7 +156,7 @@ const SUGGEST_TYPES = [
   ]}
 ];
 
-const ICONS_VERSION = 5;
+const ICONS_VERSION = 6;
 const DEFAULT_ICONS = [
   { id: "chat",      name: "聊天",     icon: "💬", action: "chat" },
   { id: "cards",     name: "字卡管理", icon: "🎴", action: "cards" },
@@ -166,7 +168,7 @@ const DEFAULT_ICONS = [
   { id: "survey",    name: "问卷",     icon: "📋", action: "survey" },
   { id: "letters",   name: "信件",     icon: "✉️", action: "letters" },
   { id: "shopping",  name: "购物",     icon: "🛒", action: "shopping" },
-  { id: "water",     name: "喝水",     icon: "💧", action: "water" },
+  { id: "water",     name: "日常",     icon: "💧", action: "water" },
   { id: "eat",       name: "吃什么",   icon: "🍽️", action: "eat" },
   { id: "checkin",   name: "查岗",     icon: "🔔", action: "checkin" },
   { id: "pomodoro",  name: "番茄钟",   icon: "🍅", action: "pomodoro" },
@@ -383,6 +385,17 @@ function renderMessage(body, m) {
     });
   } else inner += `<div>${esc(m.text)}</div>`;
   bubble.innerHTML = inner;
+  if (m.sticker) {
+    const sBox = document.createElement("div");
+    sBox.style.cssText = "margin-top:6px;";
+    const isImg = String(m.sticker).startsWith("data:");
+    if (isImg) {
+      sBox.innerHTML = `<img src="${m.sticker}" style="max-width:120px;max-height:120px;border-radius:6px;">`;
+    } else {
+      sBox.innerHTML = `<span style="font-size:26px;">${esc(m.sticker)}</span>`;
+    }
+    bubble.appendChild(sBox);
+  }
   if (m.time) {
     const t = document.createElement("div");
     t.className = "msg-time"; t.textContent = m.time;
@@ -515,7 +528,13 @@ function getAllCards() {
   const list = [];
   state.cards.categories.forEach(cat => {
     if (cat.enabled === false) return;
-    cat.cards.forEach(c => list.push(c.text));
+    cat.cards.forEach(c => {
+      let text = String(c.text || "");
+      if (cat.name === "问卷题库" && text.includes("|")) {
+        text = text.split("|")[0].trim();
+      }
+      if (text) list.push(text);
+    });
   });
   return list;
 }
@@ -546,6 +565,29 @@ function sendMessage(text, opts = {}) {
   saveMessages();
   currentQuote = null; updateQuoteBar();
   renderMessages();
+
+  // 查岗触发
+  if (text && typeof text === "string" && /你在干什么|在干嘛|在干什么|干嘛呢/.test(text)) {
+    const checkinCat = state.cards.categories.find(c => c.name === "查岗");
+    if (checkinCat && checkinCat.enabled !== false && checkinCat.cards.length) {
+      const picked = pick(checkinCat.cards.map(c => c.text).filter(Boolean));
+      if (picked) {
+        setTimeout(() => {
+          const body = document.getElementById("chatBody");
+          const typing = document.createElement("div");
+          typing.className = "typing"; typing.textContent = "对方正在输入…";
+          body.appendChild(typing);
+          body.scrollTop = body.scrollHeight;
+          setTimeout(() => {
+            typing.remove();
+            addBotMessage(picked, { isCard: true });
+          }, rand(800, 1800));
+        }, rand(state.settings.replyDelayMin * 1000, state.settings.replyDelayMax * 1000));
+        return;
+      }
+    }
+  }
+
   setTimeout(taReply, rand(state.settings.replyDelayMin * 1000, state.settings.replyDelayMax * 1000));
 }
 function getSurveyPool() {
@@ -554,24 +596,6 @@ function getSurveyPool() {
   return cat.cards.map(c => c.text).filter(Boolean);
 }
 
-function parseSurveyLine(line) {
-  const parts = line.split("|").map(s => s.trim());
-  if (parts.length < 5) return null;
-  const q = parts[0];
-  const opts = parts.slice(1, 5).filter(Boolean);
-  if (!q || opts.length < 2) return null;
-  return { q, opts };
-}
-
-function taAskSurvey() {
-  const pool = getSurveyPool();
-  if (!pool.length) return false;
-  const parsed = pool.map(parseSurveyLine).filter(Boolean);
-  if (!parsed.length) return false;
-  const picked = pick(parsed);
-  addBotMessage("", { survey: { q: picked.q, opts: picked.opts, answered: null } });
-  return true;
-}
 function getDishPool() {
   const cat = state.cards.categories.find(c => c.name === "甜品");
   if (!cat || cat.enabled === false) return null;
@@ -656,9 +680,6 @@ function taReply() {
   body.scrollTop = body.scrollHeight;
   setTimeout(() => {
     typing.remove();
-    if (Math.random() * 100 < (state.settings.surveyProb || 0)) {
-      if (taAskSurvey()) return;
-    }
     if (Math.random() * 100 < (state.settings.suggestProb || 0)) {
       if (taSuggest()) return;
     }
@@ -699,21 +720,33 @@ function taReply() {
 }
 function addBotMessage(text, opts = {}) {
   const d = nowBeijing();
+  let sticker = null;
+  if (opts.isCard && Math.random() * 100 < (state.settings.taStickerProb || 0)) {
+    const pool = [];
+    (state.emojis.sticker || []).forEach(x => pool.push(x));
+    (state.emojis.emoji || []).forEach(x => pool.push(x));
+    if (pool.length) sticker = pick(pool);
+  }
   const msg = {
     id: uid(), from: "ta", text,
     time: fmtTime(d), ts: d.getTime(),
     isCard: !!opts.isCard,
     mood: opts.mood || null, intent: opts.intent || null,
     isVoice: opts.isVoice || false, voiceDur: opts.voiceDur || 0,
-        baiduImg: opts.baiduImg || null,
+    baiduImg: opts.baiduImg || null,
     searchLink: opts.searchLink || null,
     suggest: opts.suggest || null,
     survey: opts.survey || null,
     eatSuggest: opts.eatSuggest || null,
-    words: opts.words || null
+    words: opts.words || null,
+    sticker: sticker
   };
   state.messages.push(msg);
-  saveMessages(); renderMessages();
+  saveMessages();
+  const chatScreen = document.getElementById("chatApp");
+  if (chatScreen && chatScreen.classList.contains("active")) {
+    renderMessages();
+  }
   showNotification(msg);
 }
 function showNotification(msg) {
@@ -763,39 +796,82 @@ function initInputBar() {
     document.getElementById("imgFile").value = "";
   });
   document.getElementById("emojiBtn").addEventListener("click", () => {
-    openModal("表情包", () => {
+    let pickTab = "emoji";
+    openModal("表情", () => {
       const wrap = document.createElement("div");
-      wrap.innerHTML = `<div class="row"><input class="input" id="emojiInput" placeholder="emoji 或文字"><button class="btn" id="emojiAddBtn">添加</button></div><div class="row"><input type="file" id="emojiFile" accept="image/*" hidden><button class="btn secondary" id="emojiImgBtn" style="width:100%">上传图片</button></div><div id="emojiList"></div>`;
-      const list = wrap.querySelector("#emojiList");
+
+      const tabs = document.createElement("div");
+      tabs.style.cssText = "display:flex;gap:8px;margin-bottom:12px;";
+      const tabDefs = [
+        { key: "emoji",    label: "Emoji" },
+        { key: "kaomoji",  label: "颜文字" },
+        { key: "sticker",  label: "表情包" }
+      ];
+      const tabBtns = [];
+      tabDefs.forEach(t => {
+        const btn = document.createElement("button");
+        btn.className = "btn secondary";
+        btn.style.flex = "1";
+        btn.textContent = t.label;
+        btn.addEventListener("click", () => {
+          pickTab = t.key;
+          updateTabStyle();
+          render();
+        });
+        tabBtns.push(btn);
+        tabs.appendChild(btn);
+      });
+      wrap.appendChild(tabs);
+
+      const manageBtn = document.createElement("button");
+      manageBtn.className = "btn secondary";
+      manageBtn.style.cssText = "width:100%;margin-bottom:12px;font-size:13px;";
+      manageBtn.textContent = "⚙️ 去表情库管理";
+      manageBtn.addEventListener("click", () => {
+        modal.classList.remove("open");
+        openEmojiManager();
+      });
+      wrap.appendChild(manageBtn);
+
+      const list = document.createElement("div");
+      wrap.appendChild(list);
+
+      function updateTabStyle() {
+        tabBtns.forEach((b, i) => {
+          const on = tabDefs[i].key === pickTab;
+          b.className = "btn" + (on ? "" : " secondary");
+        });
+      }
+
       function render() {
         list.innerHTML = "";
-        if (!state.emojis.length) { list.innerHTML = `<div class="empty">还没有表情</div>`; return; }
-        state.emojis.forEach((e, i) => {
+        const arr = state.emojis[pickTab] || [];
+        if (!arr.length) {
+          list.innerHTML = `<div class="empty">还没有内容，去表情库添加吧</div>`;
+          return;
+        }
+        arr.forEach((e) => {
           const item = document.createElement("div");
           item.className = "list-item";
           const isImg = e.startsWith("data:");
-          item.innerHTML = `<div class="name" style="font-size:${isImg ? "0" : "22px"};">${isImg ? `<img src="${e}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;">` : esc(e)}</div><div class="actions"><button data-send>发送</button><button class="danger" data-del>删除</button></div>`;
+          item.innerHTML = `<div class="name" style="font-size:${isImg ? "0" : "22px"};cursor:pointer;">${isImg ? `<img src="${e}" style="width:48px;height:48px;object-fit:cover;border-radius:6px;">` : esc(e)}</div><div class="actions"><button data-send>发送</button></div>`;
           item.querySelector("[data-send]").addEventListener("click", () => {
-            if (isImg) sendMessage("", { image: e }); else sendMessage(e);
+            if (isImg) sendMessage("", { image: e });
+            else sendMessage(e);
             modal.classList.remove("open");
           });
-          item.querySelector("[data-del]").addEventListener("click", () => { state.emojis.splice(i, 1); saveEmojis(); render(); });
+          const nameEl = item.querySelector(".name");
+          nameEl.addEventListener("click", () => {
+            if (isImg) sendMessage("", { image: e });
+            else sendMessage(e);
+            modal.classList.remove("open");
+          });
           list.appendChild(item);
         });
       }
+
+      updateTabStyle();
       render();
-      wrap.querySelector("#emojiAddBtn").addEventListener("click", () => {
-        const v = wrap.querySelector("#emojiInput").value.trim();
-        if (!v) return;
-        state.emojis.push(v); saveEmojis(); wrap.querySelector("#emojiInput").value = ""; render();
-      });
-      wrap.querySelector("#emojiImgBtn").addEventListener("click", () => wrap.querySelector("#emojiFile").click());
-      wrap.querySelector("#emojiFile").addEventListener("change", async () => {
-        const f = wrap.querySelector("#emojiFile").files[0];
-        if (!f) return;
-        const data = await compressImage(f, 300, 0.8);
-        state.emojis.push(data); saveEmojis(); render();
-      });
       return wrap;
     });
   });
@@ -1037,6 +1113,9 @@ function renderEmojiManager() {
   }
   body.innerHTML = "";
 
+  let selected = new Set();
+  let batchMode = false;
+
   const tabs = document.createElement("div");
   tabs.className = "emoji-tabs";
   tabs.style.cssText = "display:flex;gap:8px;margin-bottom:12px;";
@@ -1052,6 +1131,8 @@ function renderEmojiManager() {
     btn.textContent = t.label + `（${state.emojis[t.key].length}）`;
     btn.addEventListener("click", () => {
       emojiTab = t.key;
+      selected.clear();
+      batchMode = false;
       renderEmojiManager();
     });
     tabs.appendChild(btn);
@@ -1061,9 +1142,17 @@ function renderEmojiManager() {
   const toolBar = document.createElement("div");
   toolBar.className = "row";
   toolBar.style.marginBottom = "12px";
-  toolBar.innerHTML = `<button class="btn secondary" id="emojiDupBtn" style="width:100%;">❗️ 查重</button>`;
+  toolBar.innerHTML = `
+    <button class="btn secondary" id="emojiDupBtn" style="flex:1;">❗️ 查重</button>
+    <button class="btn secondary" id="emojiBatchToggleBtn" style="flex:1;">批量</button>
+  `;
   body.appendChild(toolBar);
   toolBar.querySelector("#emojiDupBtn").addEventListener("click", () => openEmojiDupCheck(emojiTab));
+  toolBar.querySelector("#emojiBatchToggleBtn").addEventListener("click", () => {
+    batchMode = !batchMode;
+    selected.clear();
+    renderEmojiManager();
+  });
 
   const addArea = document.createElement("div");
   addArea.className = "row";
@@ -1076,7 +1165,7 @@ function renderEmojiManager() {
   } else {
     addArea.innerHTML = `
       <input type="file" id="emojiNewFile" accept="image/*" multiple hidden>
-      <button class="btn" id="emojiNewImgBtn" style="width:100%;">上传图片</button>
+      <button class="btn" id="emojiNewImgBtn" style="width:100%;">上传图片（可一次选多张）</button>
     `;
   }
   body.appendChild(addArea);
@@ -1084,6 +1173,47 @@ function renderEmojiManager() {
   const listWrap = document.createElement("div");
   listWrap.id = "emojiMgrList";
   body.appendChild(listWrap);
+
+  if (batchMode) {
+    const bar = document.createElement("div");
+    bar.style.cssText = "position:sticky;bottom:8px;background:#fff;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,0.12);padding:10px 12px;display:flex;align-items:center;gap:8px;margin-top:10px;";
+    bar.innerHTML = `
+      <div style="flex:1;font-size:13px;color:#666;">已选 <span id="emojiSelCount">0</span> 项</div>
+      <button class="btn secondary" id="emojiSelAll" style="font-size:13px;">全选</button>
+      <button class="btn danger" id="emojiDelSel" style="font-size:13px;">删除</button>
+      <button class="btn secondary" id="emojiCancelSel" style="font-size:13px;">取消</button>
+    `;
+    body.appendChild(bar);
+    bar.querySelector("#emojiSelAll").addEventListener("click", () => {
+      const list = state.emojis[emojiTab];
+      if (selected.size === list.length) selected.clear();
+      else list.forEach((_, i) => selected.add(i));
+      refreshBatchBar();
+      renderList();
+    });
+    bar.querySelector("#emojiDelSel").addEventListener("click", () => {
+      if (!selected.size) return toast("还没选");
+      if (!confirm(`删除选中的 ${selected.size} 项？`)) return;
+      const list = state.emojis[emojiTab];
+      const keep = [];
+      list.forEach((item, i) => { if (!selected.has(i)) keep.push(item); });
+      state.emojis[emojiTab] = keep;
+      saveEmojis();
+      selected.clear();
+      renderEmojiManager();
+      toast("已删除");
+    });
+    bar.querySelector("#emojiCancelSel").addEventListener("click", () => {
+      batchMode = false;
+      selected.clear();
+      renderEmojiManager();
+    });
+  }
+
+  function refreshBatchBar() {
+    const el = document.getElementById("emojiSelCount");
+    if (el) el.textContent = selected.size;
+  }
 
   const renderList = () => {
     const list = state.emojis[emojiTab];
@@ -1099,20 +1229,36 @@ function renderEmojiManager() {
       const preview = isImg
         ? `<img src="${item}" style="width:48px;height:48px;object-fit:cover;border-radius:6px;">`
         : `<span style="font-size:22px;word-break:break-all;">${esc(item)}</span>`;
+      const checked = selected.has(i) ? "checked" : "";
       row.innerHTML = `
-        <div class="name">${preview}</div>
+        <div class="name" style="display:flex;align-items:center;gap:10px;">
+          ${batchMode ? `<input type="checkbox" class="emoji-check" ${checked} data-i="${i}">` : ""}
+          ${preview}
+        </div>
         <div class="actions">
-          <button class="danger" data-del>删除</button>
+          ${batchMode ? "" : `<button class="danger" data-del>删除</button>`}
         </div>
       `;
-      row.querySelector("[data-del]").addEventListener("click", () => {
-        if (!confirm("删除？")) return;
-        list.splice(i, 1);
-        saveEmojis();
-        renderEmojiManager();
-      });
+      const cb = row.querySelector(".emoji-check");
+      if (cb) {
+        cb.addEventListener("change", e => {
+          if (e.target.checked) selected.add(i);
+          else selected.delete(i);
+          refreshBatchBar();
+        });
+      }
+      const delBtn = row.querySelector("[data-del]");
+      if (delBtn) {
+        delBtn.addEventListener("click", () => {
+          if (!confirm("删除？")) return;
+          list.splice(i, 1);
+          saveEmojis();
+          renderEmojiManager();
+        });
+      }
       listWrap.appendChild(row);
     });
+    refreshBatchBar();
   };
   renderList();
 
@@ -1135,6 +1281,7 @@ function renderEmojiManager() {
     fileInp.addEventListener("change", async () => {
       const files = [...fileInp.files];
       if (!files.length) return;
+      toast(`正在处理 ${files.length} 张…`);
       for (const f of files) {
         const data = await compressImage(f, 400, 0.85);
         state.emojis.sticker.push(data);
@@ -1142,6 +1289,7 @@ function renderEmojiManager() {
       saveEmojis();
       fileInp.value = "";
       renderEmojiManager();
+      toast("上传完成");
     });
   }
 }
@@ -1858,12 +2006,45 @@ function renderChoice() {
 }
 
 /* ========== 喝水 ========== */
+let waterTab = "water"; // "water" 或 "todo"
 function openWater() {
   showScreen("waterApp");
   renderWater();
 }
 function renderWater() {
   const body = document.getElementById("waterBody");
+  body.innerHTML = "";
+
+  const tabs = document.createElement("div");
+  tabs.style.cssText = "display:flex;gap:8px;margin-bottom:12px;";
+  const tabDefs = [
+    { key: "water", label: "💧 喝水" },
+    { key: "todo",  label: "📋 待办" }
+  ];
+  tabDefs.forEach(t => {
+    const btn = document.createElement("button");
+    btn.className = "btn" + (waterTab === t.key ? "" : " secondary");
+    btn.style.flex = "1";
+    btn.textContent = t.label;
+    btn.addEventListener("click", () => {
+      waterTab = t.key;
+      renderWater();
+    });
+    tabs.appendChild(btn);
+  });
+  body.appendChild(tabs);
+
+  const content = document.createElement("div");
+  body.appendChild(content);
+
+  if (waterTab === "water") {
+    renderWaterPane(content);
+  } else {
+    renderTodoPane(content);
+  }
+}
+
+function renderWaterPane(container) {
   const today = fmtDate(nowBeijing());
   if (state.water.date !== today) {
     state.water.date = today;
@@ -1871,7 +2052,7 @@ function renderWater() {
     saveWater();
   }
   const w = state.water;
-  body.innerHTML = `
+  container.innerHTML = `
     <div class="water-circle" id="waterCircle">
       <div class="water-count">${w.count}</div>
       <div class="water-label">/ ${w.goal} 杯</div>
@@ -1884,19 +2065,235 @@ function renderWater() {
       <button class="btn secondary" id="waterGoalBtn">设置目标（当前 ${w.goal} 杯）</button>
     </div>
   `;
-  body.querySelector("#waterAddBtn").addEventListener("click", () => {
-    w.count++; saveWater(); renderWater();
+  container.querySelector("#waterAddBtn").addEventListener("click", () => {
+    w.count++; saveWater(); renderWaterPane(container);
   });
-  body.querySelector("#waterMinusBtn").addEventListener("click", () => {
+  container.querySelector("#waterMinusBtn").addEventListener("click", () => {
     if (w.count > 0) w.count--;
-    saveWater(); renderWater();
+    saveWater(); renderWaterPane(container);
   });
-  body.querySelector("#waterGoalBtn").addEventListener("click", () => {
+  container.querySelector("#waterGoalBtn").addEventListener("click", () => {
     const v = prompt("每天目标杯数：", w.goal);
     if (!v) return;
     const n = Number(v);
-    if (n > 0) { w.goal = n; saveWater(); renderWater(); }
+    if (n > 0) { w.goal = n; saveWater(); renderWaterPane(container); }
   });
+}
+
+/* ========== 待办 ========== */
+const WEEK_LABELS = ["日", "一", "二", "三", "四", "五", "六"];
+
+function getDailyReminderPool() {
+  const cat = state.cards.categories.find(c => c.name === "日常提醒");
+  if (!cat || cat.enabled === false) return [];
+  return cat.cards.map(c => c.text).filter(Boolean);
+}
+
+function renderTodoPane(container) {
+  container.innerHTML = "";
+
+  // 日历
+  const cal = document.createElement("div");
+  cal.className = "todo-calendar";
+  cal.style.cssText = "margin-bottom:12px;padding:10px;background:#fafafa;border-radius:8px;";
+  const d = nowBeijing();
+  const y = d.getFullYear(), m = d.getMonth();
+  const today = d.getDate();
+  const firstDay = new Date(y, m, 1).getDay();
+  const daysInMonth = new Date(y, m + 1, 0).getDate();
+  let calHtml = `<div style="text-align:center;font-size:14px;color:#666;margin-bottom:8px;">${y}年${m+1}月</div>`;
+  calHtml += `<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;font-size:12px;text-align:center;">`;
+  WEEK_LABELS.forEach(lbl => {
+    calHtml += `<div style="color:#999;padding:4px 0;">${lbl}</div>`;
+  });
+  for (let i = 0; i < firstDay; i++) calHtml += `<div></div>`;
+  for (let day = 1; day <= daysInMonth; day++) {
+    const isToday = day === today;
+    calHtml += `<div style="padding:6px 0;border-radius:6px;${isToday ? "background:#07c160;color:#fff;font-weight:600;" : ""}">${day}</div>`;
+  }
+  calHtml += `</div>`;
+  cal.innerHTML = calHtml;
+  container.appendChild(cal);
+
+  // 今日
+  const todayIdx = d.getDay();
+  const todayStr = fmtDate(d);
+  const todayTodos = state.todos.filter(t => t.days.includes(todayIdx));
+
+  const listWrap = document.createElement("div");
+  container.appendChild(listWrap);
+
+  const renderList = () => {
+    listWrap.innerHTML = "";
+    if (!todayTodos.length) {
+      listWrap.innerHTML = `<div class="empty">今天没有待办</div>`;
+      return;
+    }
+    todayTodos.forEach(todo => {
+      const item = document.createElement("div");
+      item.className = "list-item";
+      const isDone = todo.lastDoneDate === todayStr;
+      item.innerHTML = `
+        <div class="name" style="${isDone ? "text-decoration:line-through;color:#999;" : ""}">
+          ${esc(todo.text)}
+          <div style="font-size:12px;color:#999;margin-top:2px;">
+            ⏰ ${esc(todo.time || "未设时间")} · 周${todo.days.map(i => WEEK_LABELS[i]).join("/")}
+          </div>
+        </div>
+        <div class="actions">
+          <button data-done>${isDone ? "取消" : "完成"}</button>
+          <button class="danger" data-del>删除</button>
+        </div>
+      `;
+      item.querySelector("[data-done]").addEventListener("click", () => {
+        if (isDone) {
+          todo.lastDoneDate = "";
+        } else {
+          todo.lastDoneDate = todayStr;
+        }
+        saveTodos();
+        renderList();
+      });
+      item.querySelector("[data-del]").addEventListener("click", () => {
+        if (!confirm("删除这个待办？")) return;
+        state.todos = state.todos.filter(x => x.id !== todo.id);
+        saveTodos();
+        renderTodoPane(container);
+      });
+      listWrap.appendChild(item);
+    });
+  };
+  renderList();
+
+  // 添加按钮
+  const addBtn = document.createElement("button");
+  addBtn.className = "btn";
+  addBtn.style.cssText = "width:100%;margin-top:12px;";
+  addBtn.textContent = "+ 添加待办";
+  addBtn.addEventListener("click", () => openAddTodo(container));
+  container.appendChild(addBtn);
+
+  // 全部待办（不只是今天）
+  const allTitle = document.createElement("div");
+  allTitle.style.cssText = "margin-top:16px;font-size:13px;color:#999;";
+  allTitle.textContent = "全部待办";
+  container.appendChild(allTitle);
+
+  const allWrap = document.createElement("div");
+  container.appendChild(allWrap);
+
+  const renderAll = () => {
+    allWrap.innerHTML = "";
+    if (!state.todos.length) {
+      allWrap.innerHTML = `<div class="empty">还没有待办</div>`;
+      return;
+    }
+    state.todos.forEach(todo => {
+      const item = document.createElement("div");
+      item.className = "list-item";
+      item.innerHTML = `
+        <div class="name">
+          ${esc(todo.text)}
+          <div style="font-size:12px;color:#999;margin-top:2px;">
+            ⏰ ${esc(todo.time || "未设时间")} · 周${todo.days.map(i => WEEK_LABELS[i]).join("/")}
+          </div>
+        </div>
+        <div class="actions">
+          <button class="danger" data-del>删除</button>
+        </div>
+      `;
+      item.querySelector("[data-del]").addEventListener("click", () => {
+        if (!confirm("删除这个待办？")) return;
+        state.todos = state.todos.filter(x => x.id !== todo.id);
+        saveTodos();
+        renderTodoPane(container);
+      });
+      allWrap.appendChild(item);
+    });
+  };
+  renderAll();
+}
+
+function openAddTodo(container) {
+  openModal("添加待办", () => {
+    const wrap = document.createElement("div");
+    const pool = getDailyReminderPool();
+    const dayChecks = WEEK_LABELS.map((lbl, i) =>
+      `<label style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;font-size:13px;">
+        <input type="checkbox" class="todo-day" value="${i}"> 周${lbl}
+      </label>`
+    ).join("");
+    wrap.innerHTML = `
+      <div class="row">
+        <input class="input" id="todoText" placeholder="待办内容（留空则从日常提醒库抽）">
+        <button class="btn secondary" id="todoRollBtn" style="flex-shrink:0;">抽一条</button>
+      </div>
+      <div class="row" style="font-size:12px;color:#999;">
+        ${pool.length ? `日常提醒库共 ${pool.length} 条` : "（日常提醒库为空）"}
+      </div>
+      <div class="row">
+        <input class="input" id="todoTime" type="time" value="08:00">
+      </div>
+      <div class="row" style="flex-wrap:wrap;">
+        ${dayChecks}
+      </div>
+      <button class="btn" id="todoSaveBtn" style="width:100%;margin-top:8px;">保存</button>
+    `;
+
+    wrap.querySelector("#todoRollBtn").addEventListener("click", () => {
+      const poolNow = getDailyReminderPool();
+      if (!poolNow.length) { toast("日常提醒库是空的，去字卡管理加几条"); return; }
+      const picked = pick(poolNow);
+      wrap.querySelector("#todoText").value = picked;
+    });
+
+    wrap.querySelector("#todoSaveBtn").addEventListener("click", () => {
+      let text = wrap.querySelector("#todoText").value.trim();
+      if (!text) {
+        const poolNow = getDailyReminderPool();
+        if (poolNow.length) text = pick(poolNow);
+      }
+      if (!text) return toast("写点什么，或往日常提醒库里加几条");
+      const time = wrap.querySelector("#todoTime").value || "08:00";
+      const days = [...wrap.querySelectorAll(".todo-day:checked")].map(cb => Number(cb.value));
+      if (!days.length) return toast("至少选一天");
+      state.todos.push({
+        id: uid(),
+        text, time, days,
+        lastDoneDate: "",
+        lastNotifiedDate: "",
+        createdAt: Date.now()
+      });
+      saveTodos();
+      modal.classList.remove("open");
+      renderTodoPane(container);
+      toast("已添加");
+    });
+    return wrap;
+  });
+}
+
+/* 待办定时提醒 */
+function startTodoChecker() {
+  setInterval(() => {
+    const d = nowBeijing();
+    const todayIdx = d.getDay();
+    const todayStr = fmtDate(d);
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mm = String(d.getMinutes()).padStart(2, "0");
+    const nowHM = `${hh}:${mm}`;
+
+    state.todos.forEach(todo => {
+      if (!todo.days.includes(todayIdx)) return;
+      if (todo.lastDoneDate === todayStr) return;
+      if (todo.lastNotifiedDate === todayStr) return;
+      if (!todo.time) return;
+      if (nowHM < todo.time) return;
+      todo.lastNotifiedDate = todayStr;
+      saveTodos();
+      addBotMessage(todo.text, { isCard: true });
+    });
+  }, 30 * 1000);
 }
 
 /* ========== 搜索 ========== */
@@ -2422,6 +2819,7 @@ function renderSettingsPage() {
     <div class="list-item"><div class="name">已读不回（${s.readNoReplyProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.readNoReplyProb}" data-range="readNoReplyProb"></div></div>
     <div class="list-item"><div class="name">语音概率（${s.voiceProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.voiceProb}" data-range="voiceProb"></div></div>
     <div class="list-item"><div class="name">图片概率（${s.imgProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.imgProb}" data-range="imgProb"></div></div>
+    <div class="list-item"><div class="name">TA 挂表情（${s.taStickerProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.taStickerProb}" data-range="taStickerProb"></div></div>
     <div class="list-item"><div class="name">拍一拍回拍（${s.pokeBackProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.pokeBackProb}" data-range="pokeBackProb"></div></div>
     <div class="list-item"><div class="name">拍一拍触发字卡（${s.pokeCardProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.pokeCardProb}" data-range="pokeCardProb"></div></div>
     <div class="list-item"><div class="name">通话拒绝（${s.callRejectProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.callRejectProb}" data-range="callRejectProb"></div></div>
@@ -2569,9 +2967,31 @@ function init() {
       state.cards.categories.push({ id: uid(), name, enabled: true, cards: [] });
     }
   });
+  if (!state.cards.categories.find(c => c.name === "查岗")) {
+    state.cards.categories.push({
+      id: uid(), name: "查岗", enabled: true,
+      cards: [
+        { id: uid(), text: "在忙什么" },
+        { id: uid(), text: "有没有偷懒" },
+        { id: uid(), text: "和谁在一起呢" }
+      ]
+    });
+  }
+  if (!state.cards.categories.find(c => c.name === "日常提醒")) {
+    state.cards.categories.push({
+      id: uid(), name: "日常提醒", enabled: true,
+      cards: [
+        { id: uid(), text: "喝水" },
+        { id: uid(), text: "起来活动一下" },
+        { id: uid(), text: "眼睛休息一下" }
+      ]
+    });
+  }
   saveCards();
   if (!Array.isArray(state.checkins)) { state.checkins = []; saveCheckins(); }
   if (!Array.isArray(state.letters))  { state.letters  = []; saveLetters();  }
+  if (!Array.isArray(state.todos))    { state.todos    = []; saveTodos();    }
+  startTodoChecker();
 }
 
 init();
