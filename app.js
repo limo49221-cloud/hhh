@@ -375,8 +375,14 @@ function renderMessage(body, m) {
       ).join("");
     }
   } else if (m.image) inner += `<img class="msg-img" src="${m.image}">`;
-  else if (m.searchLink) inner += `<div style="padding:8px 10px;background:#f0f0f0;border-radius:6px;cursor:pointer;font-size:14px;" class="search-link">🔗 点击搜索：${esc(m.searchLink.kw)}（${esc(m.searchLink.platform ? m.searchLink.platform.name : "")}）</div>`;
-  else if (m.baiduImg) inner += `<div style="padding:8px;background:#f0f0f0;border-radius:6px;cursor:pointer;" class="baidu-img">🔗 点击查看百度图片：${esc(m.baiduImg)}</div>`;
+  else if (m.searchLink) {
+    inner += `<div style="font-size:15px;font-weight:600;margin-bottom:6px;">${esc(m.searchLink.kw)}</div>`;
+    inner += `<div style="padding:8px 10px;background:#f0f0f0;border-radius:6px;cursor:pointer;font-size:14px;" class="search-link">🔗 点击搜索（${esc(m.searchLink.platform ? m.searchLink.platform.name : "")}）</div>`;
+  }
+  else if (m.baiduImg) {
+    inner += `<div style="font-size:15px;font-weight:600;margin-bottom:6px;">${esc(m.baiduImg)}</div>`;
+    inner += `<div style="padding:8px;background:#f0f0f0;border-radius:6px;cursor:pointer;" class="baidu-img">🔗 点击查看百度图片</div>`;
+  }
   else if (m.isVoice) {
     bubble.classList.add("voice");
     inner += `<span class="wave">🔊</span><span class="dur">${m.voiceDur}"</span>`;
@@ -820,7 +826,7 @@ function addBotMessage(text, opts = {}) {
 
   // TA 随机撤回一个词（概率从设置读取）
   const recallP = state.settings.taRecallProb || 0;
-  if (msg.words && msg.words.length > 1 && Math.random() * 100 < recallP) {
+  if (!msg.survey && msg.words && msg.words.length > 1 && Math.random() * 100 < recallP) {
     const wi = Math.floor(Math.random() * msg.words.length);
     setTimeout(() => {
       msg.hiddenWords = msg.hiddenWords || [];
@@ -2934,7 +2940,6 @@ function renderSettingsPage() {
     <div class="list-item"><div class="name">对方评论（${s.taCommentProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.taCommentProb}" data-range="taCommentProb"></div></div>
     <div class="list-item"><div class="name">随机搜索链接（${s.searchLinkProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.searchLinkProb}" data-range="searchLinkProb"></div></div>
     <div class="list-item"><div class="name">随机推荐（${s.suggestProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.suggestProb}" data-range="suggestProb"></div></div>
-    <div class="list-item"><div class="name">TA 引用你（${s.taQuoteProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.taQuoteProb}" data-range="taQuoteProb"></div></div>
     <div class="list-item"><div class="name">TA 引用你（${s.taQuoteProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.taQuoteProb}" data-range="taQuoteProb"></div></div>
     <div class="list-item"><div class="name">TA 随机撤回词（${s.taRecallProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.taRecallProb}" data-range="taRecallProb"></div></div>
     <div class="list-item"><div class="name">TA 出题概率（${s.surveyProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.surveyProb}" data-range="surveyProb"></div></div>
