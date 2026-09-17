@@ -798,7 +798,12 @@ function addBotMessage(text, opts = {}) {
     time: fmtTime(d), ts: d.getTime(),
     isCard: !!opts.isCard,
     mood: opts.mood || null, intent: opts.intent || null,
-    ...
+    isVoice: opts.isVoice || false, voiceDur: opts.voiceDur || 0,
+    baiduImg: opts.baiduImg || null,
+    searchLink: opts.searchLink || null,
+    suggest: opts.suggest || null,
+    survey: opts.survey || null,
+    eatSuggest: opts.eatSuggest || null,
     words: opts.words || null,
     sticker: sticker,
     quote: opts.quote || null
