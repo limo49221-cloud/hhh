@@ -32,7 +32,8 @@ const DEFAULT_SETTINGS = {
   surveyProb: 5,
   eatProb: 5,
   eatDishRatio: 50,
-  taQuoteProb: 30
+  taQuoteProb: 30,
+  taRecallProb: 20
 };
 
 const state = {
@@ -793,6 +794,7 @@ function addBotMessage(text, opts = {}) {
     (state.emojis.emoji || []).forEach(x => pool.push(x));
     if (pool.length) sticker = pick(pool);
   }
+  const msgWords = opts.words || segmentWords(text);
   const msg = {
     id: uid(), from: "ta", text,
     time: fmtTime(d), ts: d.getTime(),
@@ -804,7 +806,7 @@ function addBotMessage(text, opts = {}) {
     suggest: opts.suggest || null,
     survey: opts.survey || null,
     eatSuggest: opts.eatSuggest || null,
-    words: opts.words || null,
+    words: msgWords,
     sticker: sticker,
     quote: opts.quote || null
   };
@@ -815,6 +817,19 @@ function addBotMessage(text, opts = {}) {
     renderMessages();
   }
   showNotification(msg);
+
+  // TA 随机撤回一个词（概率从设置读取）
+  const recallP = state.settings.taRecallProb || 0;
+  if (msg.words && msg.words.length > 1 && Math.random() * 100 < recallP) {
+    const wi = Math.floor(Math.random() * msg.words.length);
+    setTimeout(() => {
+      msg.hiddenWords = msg.hiddenWords || [];
+      if (!msg.hiddenWords.includes(wi)) msg.hiddenWords.push(wi);
+      saveMessages();
+      const cs = document.getElementById("chatApp");
+      if (cs && cs.classList.contains("active")) renderMessages();
+    }, 1500 + Math.random() * 2000);
+  }
 }
 function showNotification(msg) {
   const chatScreen = document.getElementById("chatApp");
@@ -2920,6 +2935,8 @@ function renderSettingsPage() {
     <div class="list-item"><div class="name">随机搜索链接（${s.searchLinkProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.searchLinkProb}" data-range="searchLinkProb"></div></div>
     <div class="list-item"><div class="name">随机推荐（${s.suggestProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.suggestProb}" data-range="suggestProb"></div></div>
     <div class="list-item"><div class="name">TA 引用你（${s.taQuoteProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.taQuoteProb}" data-range="taQuoteProb"></div></div>
+    <div class="list-item"><div class="name">TA 引用你（${s.taQuoteProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.taQuoteProb}" data-range="taQuoteProb"></div></div>
+    <div class="list-item"><div class="name">TA 随机撤回词（${s.taRecallProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.taRecallProb}" data-range="taRecallProb"></div></div>
     <div class="list-item"><div class="name">TA 出题概率（${s.surveyProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.surveyProb}" data-range="surveyProb"></div></div>
     <div class="list-item"><div class="name">TA 发吃的（${s.eatProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.eatProb}" data-range="eatProb"></div></div>
     <div class="list-item"><div class="name">菜系比例（${s.eatDishRatio}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.eatDishRatio}" data-range="eatDishRatio"></div></div>
