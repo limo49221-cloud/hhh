@@ -773,14 +773,14 @@ function taReply() {
 
     const searchP = state.settings.searchLinkProb || 0;
     if (r < searchP) {
-      const kwFixed = card.split(/\s+/)[0].slice(0, 10);
+      const kwFixed = card;
       const platformList = (typeof SEARCH_PLATFORMS !== "undefined" && SEARCH_PLATFORMS.length)
         ? SEARCH_PLATFORMS
         : [{ name: "百度", icon: "🔍", url: "https://www.baidu.com/s?wd=" }];
       const platform = platformList[Math.floor(Math.random() * platformList.length)];
       addBotMessage("", { ...opts, searchLink: { kw: kwFixed, platform }, quote });
     } else if (r < searchP + imgP) {
-      const kwFixed = card.split(/\s+/)[0].slice(0, 10);
+      const kwFixed = card;
       addBotMessage("", { ...opts, baiduImg: kwFixed, quote });
     } else if (r < searchP + imgP + voiceP) {
       const dur = rand(1, 15);
