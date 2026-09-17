@@ -33,7 +33,9 @@ const DEFAULT_SETTINGS = {
   eatProb: 5,
   eatDishRatio: 50,
   taQuoteProb: 30,
-  taRecallProb: 20
+  taRecallProb: 20,
+  taRecallWordProb: 20,
+  taReplyCommentProb: 40
 };
 
 const state = {
@@ -471,17 +473,7 @@ function renderMessage(body, m) {
       if (p) window.open(p.url + encodeURIComponent(m.suggest.kw), "_blank");
     });
   });
-  bubble.querySelectorAll(".word-chip").forEach(chip => {
-    chip.addEventListener("click", (e) => {
-      if (m.from !== "me") return;
-      if (confirm("撤回这个词？")) {
-        const wi = Number(chip.dataset.wi);
-        if (!m.hiddenWords) m.hiddenWords = [];
-        if (!m.hiddenWords.includes(wi)) m.hiddenWords.push(wi);
-        saveMessages(); renderMessages(); toast("已撤回该词");
-      }
-    });
-  });
+  // 点词撤回已移除（只能撤回整条）
   bubble.addEventListener("contextmenu", e => {
     if (e.target.classList.contains("word-chip") || e.target.closest(".quote")) return;
     e.preventDefault(); openMsgMenu(m);
@@ -500,8 +492,6 @@ function openMsgMenu(m) {
     if (!m.recalled) {
       if (m.from === "me") {
         items.push({ label: "撤回整条", fn: () => { m.recalled = true; saveMessages(); renderMessages(); toast("已撤回"); } });
-        if (m.mood) items.push({ label: "撤回心情", fn: () => { m.mood = null; saveMessages(); renderMessages(); toast("已撤回心情"); } });
-        if (m.intent) items.push({ label: "撤回意图", fn: () => { m.intent = null; saveMessages(); renderMessages(); toast("已撤回意图"); } });
       } else {
         items.push({ label: "收藏", fn: () => {
           state.favoritesMine.push({ id: uid(), text: m.text, from: m.from, ts: Date.now(), time: fmtFull(nowBeijing()) });
@@ -824,17 +814,28 @@ function addBotMessage(text, opts = {}) {
   }
   showNotification(msg);
 
-  // TA 随机撤回一个词（概率从设置读取）
-  const recallP = state.settings.taRecallProb || 0;
-  if (!msg.survey && msg.words && msg.words.length > 1 && Math.random() * 100 < recallP) {
-    const wi = Math.floor(Math.random() * msg.words.length);
-    setTimeout(() => {
-      msg.hiddenWords = msg.hiddenWords || [];
-      if (!msg.hiddenWords.includes(wi)) msg.hiddenWords.push(wi);
-      saveMessages();
-      const cs = document.getElementById("chatApp");
-      if (cs && cs.classList.contains("active")) renderMessages();
-    }, 1500 + Math.random() * 2000);
+  // TA 随机撤回：先判整条，没撤整条再判撤词
+  if (!msg.survey) {
+    const wholeP = state.settings.taRecallProb || 0;
+    const wordP = state.settings.taRecallWordProb || 0;
+    const willRecallWhole = Math.random() * 100 < wholeP;
+    const canRecallWord = msg.words && msg.words.length > 1;
+    const willRecallWord = !willRecallWhole && canRecallWord && Math.random() * 100 < wordP;
+
+    if (willRecallWhole || willRecallWord) {
+      setTimeout(() => {
+        if (willRecallWhole) {
+          msg.recalled = true;
+        } else {
+          const wi = Math.floor(Math.random() * msg.words.length);
+          msg.hiddenWords = msg.hiddenWords || [];
+          if (!msg.hiddenWords.includes(wi)) msg.hiddenWords.push(wi);
+        }
+        saveMessages();
+        const cs = document.getElementById("chatApp");
+        if (cs && cs.classList.contains("active")) renderMessages();
+      }, 1500 + Math.random() * 2000);
+    }
   }
 }
 function showNotification(msg) {
@@ -1912,13 +1913,13 @@ function renderMoments() {
       </div>
       <div class="moment-content">${esc(m.text)}</div>
       ${m.image ? `<img class="moment-img" src="${m.image}">` : ""}
-      ${commentsHtml}
       <div class="moment-actions">
         <span data-like>${m.liked ? "❤️ 已赞" : "🤍 赞"}${m.likes ? ` (${m.likes})` : ""}</span>
         <span data-comment>💬 评论</span>
         ${m.from === "ta" ? `<span data-collect>⭐ 收藏</span>` : ""}
         <span data-del style="margin-left:auto;color:#fa5151;">删除</span>
       </div>
+      ${commentsHtml}
     `;
     post.querySelector("[data-like]").addEventListener("click", () => {
       m.liked = !m.liked;
@@ -1930,8 +1931,10 @@ function renderMoments() {
       const v = prompt("评论：");
       if (!v) return;
       if (!m.comments) m.comments = [];
-      m.comments.push({ from: "me", text: v.trim(), time: fmtFull(nowBeijing()) });
+      const myText = v.trim();
+      m.comments.push({ from: "me", text: myText, time: fmtFull(nowBeijing()) });
       saveMoments(); renderMoments();
+      taReplyToMyComment(m, myText);
     });
     const collectBtn = post.querySelector("[data-collect]");
     if (collectBtn) collectBtn.addEventListener("click", () => {
@@ -1974,6 +1977,20 @@ function taCommentMoment(moment) {
     if (mScreen && mScreen.classList.contains("active")) renderMoments();
     toast(`${state.settings.taName} 评论了你的动态`);
   }
+}
+
+function taReplyToMyComment(moment, myCommentText) {
+  if (Math.random() * 100 >= state.settings.taReplyCommentProb) return;
+  const card = drawCard();
+  if (!card) return;
+  setTimeout(() => {
+    if (!moment.comments) moment.comments = [];
+    moment.comments.push({ from: "ta", text: card, time: fmtFull(nowBeijing()) });
+    saveMoments();
+    const mScreen = document.getElementById("momentsApp");
+    if (mScreen && mScreen.classList.contains("active")) renderMoments();
+    toast(`${state.settings.taName} 回复了你的评论`);
+  }, rand(2000, 6000));
 }
 document.getElementById("momentsNewBtn").addEventListener("click", () => {
   openModal("发动态", () => {
@@ -2938,10 +2955,12 @@ function renderSettingsPage() {
     <div class="list-item"><div class="name">意图触发（${s.intentProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.intentProb}" data-range="intentProb"></div></div>
     <div class="list-item"><div class="name">对方发朋友圈（${s.taMomentsProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.taMomentsProb}" data-range="taMomentsProb"></div></div>
     <div class="list-item"><div class="name">对方评论（${s.taCommentProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.taCommentProb}" data-range="taCommentProb"></div></div>
+    <div class="list-item"><div class="name">TA 回复我评论（${s.taReplyCommentProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.taReplyCommentProb}" data-range="taReplyCommentProb"></div></div>
     <div class="list-item"><div class="name">随机搜索链接（${s.searchLinkProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.searchLinkProb}" data-range="searchLinkProb"></div></div>
     <div class="list-item"><div class="name">随机推荐（${s.suggestProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.suggestProb}" data-range="suggestProb"></div></div>
     <div class="list-item"><div class="name">TA 引用你（${s.taQuoteProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.taQuoteProb}" data-range="taQuoteProb"></div></div>
-    <div class="list-item"><div class="name">TA 随机撤回词（${s.taRecallProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.taRecallProb}" data-range="taRecallProb"></div></div>
+    <div class="list-item"><div class="name">TA 撤回整条（${s.taRecallProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.taRecallProb}" data-range="taRecallProb"></div></div>
+    <div class="list-item"><div class="name">TA 撤回词（${s.taRecallWordProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.taRecallWordProb}" data-range="taRecallWordProb"></div></div>
     <div class="list-item"><div class="name">TA 出题概率（${s.surveyProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.surveyProb}" data-range="surveyProb"></div></div>
     <div class="list-item"><div class="name">TA 发吃的（${s.eatProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.eatProb}" data-range="eatProb"></div></div>
     <div class="list-item"><div class="name">菜系比例（${s.eatDishRatio}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.eatDishRatio}" data-range="eatDishRatio"></div></div>
