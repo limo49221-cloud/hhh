@@ -31,7 +31,8 @@ const DEFAULT_SETTINGS = {
   suggestProb: 5,
   surveyProb: 5,
   eatProb: 5,
-  eatDishRatio: 50
+  eatDishRatio: 50,
+  taQuoteProb: 30
 };
 
 const state = {
@@ -387,12 +388,12 @@ function renderMessage(body, m) {
   bubble.innerHTML = inner;
   if (m.sticker) {
     const sBox = document.createElement("div");
-    sBox.style.cssText = "margin-top:6px;";
+    sBox.className = "sticker-box";
     const isImg = String(m.sticker).startsWith("data:");
     if (isImg) {
-      sBox.innerHTML = `<img src="${m.sticker}" style="max-width:120px;max-height:120px;border-radius:6px;">`;
+      sBox.innerHTML = `<img src="${m.sticker}" class="sticker-img">`;
     } else {
-      sBox.innerHTML = `<span style="font-size:26px;">${esc(m.sticker)}</span>`;
+      sBox.innerHTML = `<span class="sticker-text">${esc(m.sticker)}</span>`;
     }
     bubble.appendChild(sBox);
   }
@@ -500,7 +501,23 @@ function openMsgMenu(m) {
           saveFavMine(); toast("已收藏");
         }});
       }
-      items.push({ label: "引用", fn: () => { currentQuote = m; updateQuoteBar(); renderMessages(); toast("已引用"); } });
+      items.push({ label: "引用", fn: () => {
+        let qText = m.text;
+        if (!qText) {
+          if (m.image) qText = "[图片]";
+          else if (m.isVoice) qText = `[语音 ${m.voiceDur}" ]`;
+          else if (m.searchLink) qText = `[搜索：${m.searchLink.kw}]`;
+          else if (m.baiduImg) qText = `[图片：${m.baiduImg}]`;
+          else if (m.suggest) qText = `[推荐：${m.suggest.kw}]`;
+          else if (m.survey) qText = `[问卷：${m.survey.q}]`;
+          else if (m.eatSuggest) qText = `[吃的：${m.eatSuggest.dish}]`;
+          else qText = "[消息]";
+        }
+        currentQuote = { ...m, text: qText };
+        updateQuoteBar();
+        renderMessages();
+        toast("已引用");
+      }});
     }
     items.forEach(it => {
       const div = document.createElement("div");
@@ -521,7 +538,8 @@ function updateQuoteBar() {
     const inputbar = document.querySelector(".chat-inputbar");
     if (inputbar) inputbar.parentNode.insertBefore(bar, inputbar);
   }
-  bar.innerHTML = `<span>引用：${esc(currentQuote.text).slice(0,30)}</span><button style="background:none;border:none;color:#888;cursor:pointer;">✕</button>`;
+  const qText = currentQuote.text || "[消息]";
+  bar.innerHTML = `<span>引用：${esc(qText).slice(0,30)}</span><button style="background:none;border:none;color:#888;cursor:pointer;">✕</button>`;
   bar.querySelector("button").addEventListener("click", () => { currentQuote = null; updateQuoteBar(); });
 }
 function getAllCards() {
@@ -547,10 +565,39 @@ function drawIntent() {
   const l = (state.cards.categories.find(c => c.name === "意图") || {}).cards || [];
   return l.length ? pick(l).text : null;
 }
+function segmentWords(text) {
+  if (!text) return null;
+  // 有空格就按空格切（你打空格的地方 = 你心里的词）
+  if (/\s/.test(text)) {
+    const parts = text.split(/\s+/).filter(Boolean);
+    return parts.length > 1 ? parts : null;
+  }
+  // 没空格就用 Intl.Segmenter 自动中文分词
+  try {
+    if (typeof Intl !== "undefined" && Intl.Segmenter) {
+      const seg = new Intl.Segmenter("zh", { granularity: "word" });
+      const parts = [];
+      for (const s of seg.segment(text)) {
+        if (s.isWordLike) parts.push(s.segment);
+        else if (parts.length && /[，。！？、；：""''《》（）]/.test(s.segment)) {
+          // 标点单独不作为 chip，忽略
+        } else if (s.segment.trim()) {
+          parts.push(s.segment);
+        }
+      }
+      return parts.length > 1 ? parts : null;
+    }
+  } catch (e) {
+    // 老浏览器 fallback：逐字
+  }
+  // 兜底：逐字切（老浏览器）
+  const chars = [...text];
+  return chars.length > 1 ? chars : null;
+}
 function sendMessage(text, opts = {}) {
   if (!text && !opts.image && !opts.isVoice) return;
   const d = nowBeijing();
-  const words = text ? text.split(/\s+/).filter(Boolean) : null;
+  const words = segmentWords(text);
   const msg = {
     id: uid(), from: "me",
     text: text || (opts.image ? "[图片]" : ""),
@@ -567,7 +614,7 @@ function sendMessage(text, opts = {}) {
   renderMessages();
 
   // 查岗触发
-  if (text && typeof text === "string" && /你在干什么|在干嘛|在干什么|干嘛呢/.test(text)) {
+  if (text && typeof text === "string" && /你在干什么/.test(text)) {
     const checkinCat = state.cards.categories.find(c => c.name === "查岗");
     if (checkinCat && checkinCat.enabled !== false && checkinCat.cards.length) {
       const picked = pick(checkinCat.cards.map(c => c.text).filter(Boolean));
@@ -580,7 +627,13 @@ function sendMessage(text, opts = {}) {
           body.scrollTop = body.scrollHeight;
           setTimeout(() => {
             typing.remove();
-            addBotMessage(picked, { isCard: true });
+            const moodP = state.settings.moodProb || 0;
+            const intentP = state.settings.intentProb || 0;
+            addBotMessage(picked, {
+              isCard: true,
+              mood: Math.random() * 100 < moodP ? drawMood() : null,
+              intent: Math.random() * 100 < intentP ? drawIntent() : null
+            });
           }, rand(800, 1800));
         }, rand(state.settings.replyDelayMin * 1000, state.settings.replyDelayMax * 1000));
         return;
@@ -698,6 +751,19 @@ function taReply() {
       mood: Math.random() * 100 < moodP ? drawMood() : null,
       intent: Math.random() * 100 < intentP ? drawIntent() : null
     };
+    // 引用：按概率从最近 10 条"我"的消息里挑一条
+    let quote = null;
+    const quoteP = state.settings.taQuoteProb || 0;
+    if (Math.random() * 100 < quoteP) {
+      const myRecent = state.messages
+        .filter(m => m.from === "me" && m.text && !m.recalled)
+        .slice(-10);
+      if (myRecent.length) {
+        const qm = pick(myRecent);
+        quote = { id: qm.id, text: qm.text, from: qm.from };
+      }
+    }
+
     const searchP = state.settings.searchLinkProb || 0;
     if (r < searchP) {
       const kwFixed = card.split(/\s+/)[0].slice(0, 10);
@@ -705,16 +771,16 @@ function taReply() {
         ? SEARCH_PLATFORMS
         : [{ name: "百度", icon: "🔍", url: "https://www.baidu.com/s?wd=" }];
       const platform = platformList[Math.floor(Math.random() * platformList.length)];
-      addBotMessage("", { ...opts, searchLink: { kw: kwFixed, platform } });
+      addBotMessage("", { ...opts, searchLink: { kw: kwFixed, platform }, quote });
     } else if (r < searchP + imgP) {
       const kwFixed = card.split(/\s+/)[0].slice(0, 10);
-      addBotMessage("", { ...opts, baiduImg: kwFixed });
+      addBotMessage("", { ...opts, baiduImg: kwFixed, quote });
     } else if (r < searchP + imgP + voiceP) {
       const dur = rand(1, 15);
-      addBotMessage(card, { ...opts, isVoice: true, voiceDur: dur });
+      addBotMessage(card, { ...opts, isVoice: true, voiceDur: dur, quote });
     } else {
       const words = card.split(/\s+/).filter(Boolean);
-      addBotMessage(card, { ...opts, words: words.length > 1 ? words : null });
+      addBotMessage(card, { ...opts, words: words.length > 1 ? words : null, quote });
     }
   }, rand(800, 1800));
 }
@@ -732,14 +798,10 @@ function addBotMessage(text, opts = {}) {
     time: fmtTime(d), ts: d.getTime(),
     isCard: !!opts.isCard,
     mood: opts.mood || null, intent: opts.intent || null,
-    isVoice: opts.isVoice || false, voiceDur: opts.voiceDur || 0,
-    baiduImg: opts.baiduImg || null,
-    searchLink: opts.searchLink || null,
-    suggest: opts.suggest || null,
-    survey: opts.survey || null,
-    eatSuggest: opts.eatSuggest || null,
+    ...
     words: opts.words || null,
-    sticker: sticker
+    sticker: sticker,
+    quote: opts.quote || null
   };
   state.messages.push(msg);
   saveMessages();
@@ -2092,7 +2154,42 @@ function getDailyReminderPool() {
 function renderTodoPane(container) {
   container.innerHTML = "";
 
-  // 日历
+  // 日历（只画一次）
+  renderTodoCalendar(container);
+
+  // 今日列表容器
+  const todayTitle = document.createElement("div");
+  todayTitle.style.cssText = "margin-top:16px;font-size:13px;color:#999;";
+  todayTitle.textContent = "今日待办";
+  container.appendChild(todayTitle);
+
+  const todayWrap = document.createElement("div");
+  todayWrap.className = "todo-today-wrap";
+  container.appendChild(todayWrap);
+  renderTodoTodayList(todayWrap, container);
+
+  // 添加按钮
+  const addBtn = document.createElement("button");
+  addBtn.className = "btn";
+  addBtn.style.cssText = "width:100%;margin-top:12px;";
+  addBtn.textContent = "+ 添加待办";
+  addBtn.addEventListener("click", () => openAddTodo(container));
+  container.appendChild(addBtn);
+
+  // 全部列表容器
+  const allTitle = document.createElement("div");
+  allTitle.style.cssText = "margin-top:16px;font-size:13px;color:#999;";
+  allTitle.textContent = "全部待办";
+  container.appendChild(allTitle);
+
+  const allWrap = document.createElement("div");
+  allWrap.className = "todo-all-wrap";
+  container.appendChild(allWrap);
+  renderTodoAllList(allWrap, container);
+}
+
+// 只画日历
+function renderTodoCalendar(container) {
   const cal = document.createElement("div");
   cal.className = "todo-calendar";
   cal.style.cssText = "margin-bottom:12px;padding:10px;background:#fafafa;border-radius:8px;";
@@ -2114,104 +2211,88 @@ function renderTodoPane(container) {
   calHtml += `</div>`;
   cal.innerHTML = calHtml;
   container.appendChild(cal);
+}
 
-  // 今日
+// 只画今日列表
+function renderTodoTodayList(listWrap, container) {
+  listWrap.innerHTML = "";
+  const d = nowBeijing();
   const todayIdx = d.getDay();
   const todayStr = fmtDate(d);
   const todayTodos = state.todos.filter(t => t.days.includes(todayIdx));
 
-  const listWrap = document.createElement("div");
-  container.appendChild(listWrap);
-
-  const renderList = () => {
-    listWrap.innerHTML = "";
-    if (!todayTodos.length) {
-      listWrap.innerHTML = `<div class="empty">今天没有待办</div>`;
-      return;
-    }
-    todayTodos.forEach(todo => {
-      const item = document.createElement("div");
-      item.className = "list-item";
-      const isDone = todo.lastDoneDate === todayStr;
-      item.innerHTML = `
-        <div class="name" style="${isDone ? "text-decoration:line-through;color:#999;" : ""}">
-          ${esc(todo.text)}
-          <div style="font-size:12px;color:#999;margin-top:2px;">
-            ⏰ ${esc(todo.time || "未设时间")} · 周${todo.days.map(i => WEEK_LABELS[i]).join("/")}
-          </div>
+  if (!todayTodos.length) {
+    listWrap.innerHTML = `<div class="empty">今天没有待办</div>`;
+    return;
+  }
+  todayTodos.forEach(todo => {
+    const item = document.createElement("div");
+    item.className = "list-item";
+    const isDone = todo.lastDoneDate === todayStr;
+    item.innerHTML = `
+      <div class="name" style="${isDone ? "text-decoration:line-through;color:#999;" : ""}">
+        ${esc(todo.text)}
+        <div style="font-size:12px;color:#999;margin-top:2px;">
+          ⏰ ${esc(todo.time || "未设时间")} · 周${todo.days.map(i => WEEK_LABELS[i]).join("/")}
         </div>
-        <div class="actions">
-          <button data-done>${isDone ? "取消" : "完成"}</button>
-          <button class="danger" data-del>删除</button>
-        </div>
-      `;
-      item.querySelector("[data-done]").addEventListener("click", () => {
-        if (isDone) {
-          todo.lastDoneDate = "";
-        } else {
-          todo.lastDoneDate = todayStr;
-        }
-        saveTodos();
-        renderList();
-      });
-      item.querySelector("[data-del]").addEventListener("click", () => {
-        if (!confirm("删除这个待办？")) return;
-        state.todos = state.todos.filter(x => x.id !== todo.id);
-        saveTodos();
-        renderTodoPane(container);
-      });
-      listWrap.appendChild(item);
+      </div>
+      <div class="actions">
+        <button data-done>${isDone ? "取消" : "完成"}</button>
+        <button class="danger" data-del>删除</button>
+      </div>
+    `;
+    item.querySelector("[data-done]").addEventListener("click", () => {
+      if (isDone) {
+        todo.lastDoneDate = "";
+      } else {
+        todo.lastDoneDate = todayStr;
+      }
+      saveTodos();
+      renderTodoTodayList(listWrap, container);
     });
-  };
-  renderList();
-
-  // 添加按钮
-  const addBtn = document.createElement("button");
-  addBtn.className = "btn";
-  addBtn.style.cssText = "width:100%;margin-top:12px;";
-  addBtn.textContent = "+ 添加待办";
-  addBtn.addEventListener("click", () => openAddTodo(container));
-  container.appendChild(addBtn);
-
-  // 全部待办（不只是今天）
-  const allTitle = document.createElement("div");
-  allTitle.style.cssText = "margin-top:16px;font-size:13px;color:#999;";
-  allTitle.textContent = "全部待办";
-  container.appendChild(allTitle);
-
-  const allWrap = document.createElement("div");
-  container.appendChild(allWrap);
-
-  const renderAll = () => {
-    allWrap.innerHTML = "";
-    if (!state.todos.length) {
-      allWrap.innerHTML = `<div class="empty">还没有待办</div>`;
-      return;
-    }
-    state.todos.forEach(todo => {
-      const item = document.createElement("div");
-      item.className = "list-item";
-      item.innerHTML = `
-        <div class="name">
-          ${esc(todo.text)}
-          <div style="font-size:12px;color:#999;margin-top:2px;">
-            ⏰ ${esc(todo.time || "未设时间")} · 周${todo.days.map(i => WEEK_LABELS[i]).join("/")}
-          </div>
-        </div>
-        <div class="actions">
-          <button class="danger" data-del>删除</button>
-        </div>
-      `;
-      item.querySelector("[data-del]").addEventListener("click", () => {
-        if (!confirm("删除这个待办？")) return;
-        state.todos = state.todos.filter(x => x.id !== todo.id);
-        saveTodos();
-        renderTodoPane(container);
-      });
-      allWrap.appendChild(item);
+    item.querySelector("[data-del]").addEventListener("click", () => {
+      if (!confirm("删除这个待办？")) return;
+      state.todos = state.todos.filter(x => x.id !== todo.id);
+      saveTodos();
+      renderTodoTodayList(listWrap, container);
+      const allWrap = container.querySelector(".todo-all-wrap");
+      if (allWrap) renderTodoAllList(allWrap, container);
     });
-  };
-  renderAll();
+    listWrap.appendChild(item);
+  });
+}
+
+// 只画全部列表
+function renderTodoAllList(allWrap, container) {
+  allWrap.innerHTML = "";
+  if (!state.todos.length) {
+    allWrap.innerHTML = `<div class="empty">还没有待办</div>`;
+    return;
+  }
+  state.todos.forEach(todo => {
+    const item = document.createElement("div");
+    item.className = "list-item";
+    item.innerHTML = `
+      <div class="name">
+        ${esc(todo.text)}
+        <div style="font-size:12px;color:#999;margin-top:2px;">
+          ⏰ ${esc(todo.time || "未设时间")} · 周${todo.days.map(i => WEEK_LABELS[i]).join("/")}
+        </div>
+      </div>
+      <div class="actions">
+        <button class="danger" data-del>删除</button>
+      </div>
+    `;
+    item.querySelector("[data-del]").addEventListener("click", () => {
+      if (!confirm("删除这个待办？")) return;
+      state.todos = state.todos.filter(x => x.id !== todo.id);
+      saveTodos();
+      renderTodoAllList(allWrap, container);
+      const todayWrap = container.querySelector(".todo-today-wrap");
+      if (todayWrap) renderTodoTodayList(todayWrap, container);
+    });
+    allWrap.appendChild(item);
+  });
 }
 
 function openAddTodo(container) {
@@ -2266,7 +2347,11 @@ function openAddTodo(container) {
       });
       saveTodos();
       modal.classList.remove("open");
-      renderTodoPane(container);
+      // 只刷两个列表，不重画日历，滚动位置保留
+      const todayWrap = container.querySelector(".todo-today-wrap");
+      const allWrap = container.querySelector(".todo-all-wrap");
+      if (todayWrap) renderTodoTodayList(todayWrap, container);
+      if (allWrap) renderTodoAllList(allWrap, container);
       toast("已添加");
     });
     return wrap;
@@ -2829,6 +2914,7 @@ function renderSettingsPage() {
     <div class="list-item"><div class="name">对方评论（${s.taCommentProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.taCommentProb}" data-range="taCommentProb"></div></div>
     <div class="list-item"><div class="name">随机搜索链接（${s.searchLinkProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.searchLinkProb}" data-range="searchLinkProb"></div></div>
     <div class="list-item"><div class="name">随机推荐（${s.suggestProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.suggestProb}" data-range="suggestProb"></div></div>
+    <div class="list-item"><div class="name">TA 引用你（${s.taQuoteProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.taQuoteProb}" data-range="taQuoteProb"></div></div>
     <div class="list-item"><div class="name">TA 出题概率（${s.surveyProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.surveyProb}" data-range="surveyProb"></div></div>
     <div class="list-item"><div class="name">TA 发吃的（${s.eatProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.eatProb}" data-range="eatProb"></div></div>
     <div class="list-item"><div class="name">菜系比例（${s.eatDishRatio}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.eatDishRatio}" data-range="eatDishRatio"></div></div>
