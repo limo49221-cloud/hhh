@@ -34,7 +34,10 @@ const DEFAULT_SETTINGS = {
   eatDishRatio: 50,
   taQuoteProb: 30,
   taRecallProb: 20,
-  taReplyCommentProb: 40
+  taReplyCommentProb: 40,
+  taCombineProb: 10,
+  taCombineMin: 1,
+  taCombineMax: 3
 };
 
 const state = {
@@ -387,10 +390,6 @@ function renderMessage(body, m) {
   else if (m.isVoice) {
     bubble.classList.add("voice");
     inner += `<span class="wave">🔊</span><span class="dur">${m.voiceDur}"</span>`;
-  } else if (m.words && m.words.length) {
-    m.words.forEach((w) => {
-      inner += `<span class="word-chip">${esc(w)}</span>`;
-    });
   } else inner += `<div>${esc(m.text)}</div>`;
   bubble.innerHTML = inner;
   if (m.sticker) {
@@ -560,43 +559,13 @@ function drawIntent() {
   const l = (state.cards.categories.find(c => c.name === "意图") || {}).cards || [];
   return l.length ? pick(l).text : null;
 }
-function segmentWords(text) {
-  if (!text) return null;
-  // 有空格就按空格切（你打空格的地方 = 你心里的词）
-  if (/\s/.test(text)) {
-    const parts = text.split(/\s+/).filter(Boolean);
-    return parts.length > 1 ? parts : null;
-  }
-  // 没空格就用 Intl.Segmenter 自动中文分词
-  try {
-    if (typeof Intl !== "undefined" && Intl.Segmenter) {
-      const seg = new Intl.Segmenter("zh", { granularity: "word" });
-      const parts = [];
-      for (const s of seg.segment(text)) {
-        if (s.isWordLike) parts.push(s.segment);
-        else if (parts.length && /[，。！？、；：""''《》（）]/.test(s.segment)) {
-          // 标点单独不作为 chip，忽略
-        } else if (s.segment.trim()) {
-          parts.push(s.segment);
-        }
-      }
-      return parts.length > 1 ? parts : null;
-    }
-  } catch (e) {
-    // 老浏览器 fallback：逐字
-  }
-  // 兜底：逐字切（老浏览器）
-  const chars = [...text];
-  return chars.length > 1 ? chars : null;
-}
+// segmentWords 已移除（不再分词）
 function sendMessage(text, opts = {}) {
   if (!text && !opts.image && !opts.isVoice) return;
   const d = nowBeijing();
-  const words = segmentWords(text);
   const msg = {
     id: uid(), from: "me",
     text: text || (opts.image ? "[图片]" : ""),
-    words: words && words.length > 1 ? words : null,
     time: fmtTime(d), ts: d.getTime(),
     isCard: false, image: opts.image || null,
     isVoice: opts.isVoice || false,
@@ -719,6 +688,20 @@ function taSuggest() {
   addBotMessage("", { suggest: { kw, type: type.key } });
   return true;
 }
+function taCombineCards() {
+  const pool = getAllCards();
+  if (!pool.length) return false;
+  let min = Math.max(1, Math.floor(state.settings.taCombineMin || 1));
+  let max = Math.max(min, Math.floor(state.settings.taCombineMax || 3));
+  const n = rand(min, max);
+  const parts = [];
+  for (let i = 0; i < n; i++) {
+    parts.push(pick(pool));
+  }
+  const text = parts.join(" ");
+  addBotMessage(text, { isCard: true, mood: drawMood(), intent: drawIntent() });
+  return true;
+}
 function taReply() {
   const body = document.getElementById("chatBody");
   if (Math.random() * 100 < state.settings.readNoReplyProb) return;
@@ -733,6 +716,9 @@ function taReply() {
     }
     if (Math.random() * 100 < (state.settings.eatProb || 0)) {
       if (taSuggestEat()) return;
+    }
+    if (Math.random() * 100 < (state.settings.taCombineProb || 0)) {
+      if (taCombineCards()) return;
     }
     const card = drawCard();
     if (!card) { addBotMessage("（字卡库是空的，去字卡管理加几张吧）"); return; }
@@ -774,8 +760,7 @@ function taReply() {
       const dur = rand(1, 15);
       addBotMessage(card, { ...opts, isVoice: true, voiceDur: dur, quote });
     } else {
-      const words = card.split(/\s+/).filter(Boolean);
-      addBotMessage(card, { ...opts, words: words.length > 1 ? words : null, quote });
+      addBotMessage(card, { ...opts, quote });
     }
   }, rand(800, 1800));
 }
@@ -788,7 +773,6 @@ function addBotMessage(text, opts = {}) {
     (state.emojis.emoji || []).forEach(x => pool.push(x));
     if (pool.length) sticker = pick(pool);
   }
-  const msgWords = opts.words || segmentWords(text);
   const msg = {
     id: uid(), from: "ta", text,
     time: fmtTime(d), ts: d.getTime(),
@@ -800,7 +784,6 @@ function addBotMessage(text, opts = {}) {
     suggest: opts.suggest || null,
     survey: opts.survey || null,
     eatSuggest: opts.eatSuggest || null,
-    words: msgWords,
     sticker: sticker,
     quote: opts.quote || null
   };
@@ -2948,6 +2931,9 @@ function renderSettingsPage() {
     <div class="list-item"><div class="name">TA 出题概率（${s.surveyProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.surveyProb}" data-range="surveyProb"></div></div>
     <div class="list-item"><div class="name">TA 发吃的（${s.eatProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.eatProb}" data-range="eatProb"></div></div>
     <div class="list-item"><div class="name">菜系比例（${s.eatDishRatio}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.eatDishRatio}" data-range="eatDishRatio"></div></div>
+    <div class="list-item"><div class="name">TA 拼字卡（${s.taCombineProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.taCombineProb}" data-range="taCombineProb"></div></div>
+    <div class="list-item"><div class="name">拼字卡最少张数（${s.taCombineMin}）</div><div class="actions"><input type="range" min="1" max="10" value="${s.taCombineMin}" data-range="taCombineMin"></div></div>
+    <div class="list-item"><div class="name">拼字卡最多张数（${s.taCombineMax}）</div><div class="actions"><input type="range" min="1" max="10" value="${s.taCombineMax}" data-range="taCombineMax"></div></div>
     <div class="list-item"><div class="name">拍一拍文案库</div><div class="actions"><button data-pokemgr>管理（${state.pokeTexts.length}）</button></div></div>`;
   body.querySelectorAll("[data-edit]").forEach(btn => {
     btn.addEventListener("click", () => {
