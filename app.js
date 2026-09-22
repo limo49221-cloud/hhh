@@ -69,7 +69,8 @@ const state = {
   letters: store.get("letters", []),
   dupIgnored: store.get("dupIgnored", []),
   pomodoro: store.get("pomodoro", { focusMin: 25, shortMin: 5, longMin: 15, todayCount: 0, totalCount: 0, date: "" }),
-  desktopIcons: store.get("desktopIcons", null)
+  desktopIcons: store.get("desktopIcons", null),
+  call: store.get("call", { inCall: false, startTs: 0, mini: false, miniPos: null })
 };
 
 function saveSettings() { store.set("settings", state.settings); }
@@ -89,6 +90,7 @@ function saveLetters() { store.set("letters", state.letters); }
 function saveDupIgnored() { store.set("dupIgnored", state.dupIgnored); }
 function savePomodoro() { store.set("pomodoro", state.pomodoro); }
 function saveDesktopIcons() { store.set("desktopIcons", state.desktopIcons); }
+function saveCall() { store.set("call", state.call); }
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 function nowBeijing() {
@@ -133,6 +135,22 @@ function showScreen(id) {
   document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
   const el = document.getElementById(id);
   if (el) el.classList.add("active");
+  // 通话中：切到别的页面时，自动显示小窗
+  if (state.call && state.call.inCall && id !== "callScreen") {
+    const mini = document.getElementById("callMini");
+    if (mini) {
+      mini.style.display = "flex";
+      state.call.mini = true;
+      saveCall();
+    }
+  }
+  // 通话中：切回通话页时，隐藏小窗（显示全屏）
+  if (state.call && state.call.inCall && id === "callScreen") {
+    const mini = document.getElementById("callMini");
+    if (mini) mini.style.display = "none";
+    state.call.mini = false;
+    saveCall();
+  }
 }
 document.querySelectorAll("[data-back]").forEach(btn => {
   btn.addEventListener("click", () => showScreen("desktop"));
@@ -1126,34 +1144,192 @@ function performPoke(pokeText) {
     }, 1500);
   }
 }
-let callTimerId = null, callStartTs = 0;
+/* ========== 通话 ========== */
+let callTimerId = null;
+
+function fmtCallTime(sec) {
+  return `${String(Math.floor(sec/3600)).padStart(2,"0")}:${String(Math.floor((sec%3600)/60)).padStart(2,"0")}:${String(sec%60).padStart(2,"0")}`;
+}
+
+function paintCallAvatars() {
+  const taAv = state.settings.taAvatar;
+  const setAv = (el, fallback) => {
+    if (!el) return;
+    if (taAv) el.innerHTML = `<img src="${taAv}">`;
+    else el.textContent = fallback;
+  };
+  setAv(document.getElementById("callAvatar"), "TA");
+  setAv(document.getElementById("callMiniAvatar"), "TA");
+  const n = document.getElementById("callName");
+  const mn = document.getElementById("callMiniName");
+  if (n) n.textContent = state.settings.taName || "TA";
+  if (mn) mn.textContent = state.settings.taName || "TA";
+}
+
+function tickCallTimer() {
+  const s = Math.floor((Date.now() - state.call.startTs) / 1000);
+  const txt = fmtCallTime(s);
+  const a = document.getElementById("callTimer");
+  const b = document.getElementById("callMiniTimer");
+  if (a) a.textContent = txt;
+  if (b) b.textContent = txt;
+}
+
+function startCallTicker() {
+  clearInterval(callTimerId);
+  tickCallTimer();
+  callTimerId = setInterval(tickCallTimer, 1000);
+}
+
+function showCallFull() {
+  state.call.mini = false;
+  saveCall();
+  showScreen("callScreen"); // showScreen 里会自动隐藏小窗
+  paintCallAvatars();
+  startCallTicker();
+}
+
+function showCallMini() {
+  state.call.mini = true;
+  saveCall();
+  // 如果当前在通话页，切回聊天页；否则留在当前页面
+  const cur = document.querySelector(".screen.active");
+  if (!cur || cur.id === "callScreen") {
+    showScreen("chatApp");
+  }
+  const mini = document.getElementById("callMini");
+  mini.style.display = "flex";
+  paintCallAvatars();
+  applyMiniPos();
+  startCallTicker();
+}
+
+function applyMiniPos() {
+  const mini = document.getElementById("callMini");
+  if (!mini) return;
+  const p = state.call.miniPos;
+  if (p) {
+    mini.style.left = p.left + "px";
+    mini.style.top = p.top + "px";
+    mini.style.right = "auto";
+  } else {
+    mini.style.left = "";
+    mini.style.top = "";
+    mini.style.right = "16px";
+  }
+}
+
 function doCall() {
+  if (state.call.inCall) { toast("已在通话中"); return; }
   if (Math.random() * 100 < state.settings.callRejectProb) {
     state.messages.push({ id: uid(), type: "system", text: `对方已拒绝通话`, ts: Date.now() });
     saveMessages(); renderMessages(); toast("对方已拒绝");
     return;
   }
-  document.getElementById("callName").textContent = state.settings.taName;
-  const av = document.getElementById("callAvatar");
-  if (state.settings.taAvatar) av.innerHTML = `<img src="${state.settings.taAvatar}">`;
-  else av.textContent = "TA";
-  document.getElementById("callTimer").textContent = "00:00:00";
-  showScreen("callScreen");
-  callStartTs = Date.now();
-  callTimerId = setInterval(updateCallTimer, 1000);
+  state.call.inCall = true;
+  state.call.startTs = Date.now();
+  state.call.mini = false;
+  state.call.miniPos = null;
+  saveCall();
+  showCallFull();
 }
-function updateCallTimer() {
-  const el = document.getElementById("callTimer");
-  if (!el) return;
-  const s = Math.floor((Date.now() - callStartTs) / 1000);
-  el.textContent = `${String(Math.floor(s/3600)).padStart(2,"0")}:${String(Math.floor((s%3600)/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
-}
-document.getElementById("hangupBtn").addEventListener("click", () => {
-  clearInterval(callTimerId);
-  const s = Math.floor((Date.now() - callStartTs) / 1000);
+
+function hangupCall() {
+  if (!state.call.inCall) return;
+  const s = Math.floor((Date.now() - state.call.startTs) / 1000);
   state.messages.push({ id: uid(), type: "system", text: `通话结束 · 时长 ${Math.floor(s/60)}分${s%60}秒`, ts: Date.now() });
-  saveMessages(); showScreen("chatApp"); renderMessages();
-});
+  saveMessages();
+  state.call.inCall = false;
+  state.call.startTs = 0;
+  state.call.mini = false;
+  state.call.miniPos = null;
+  saveCall();
+  clearInterval(callTimerId);
+  document.getElementById("callMini").style.display = "none";
+  showScreen("chatApp");
+  renderMessages();
+}
+
+/* ===== 小窗拖动 ===== */
+function bindMiniDrag() {
+  const mini = document.getElementById("callMini");
+  if (!mini || mini.dataset.bound) return;
+  mini.dataset.bound = "1";
+
+  let dragging = false;
+  let startX = 0, startY = 0;
+  let startLeft = 0, startTop = 0;
+  let moved = false;
+
+  const onDown = (e) => {
+    // 按钮上不触发拖动
+    if (e.target.closest("button")) return;
+    dragging = true;
+    moved = false;
+    const pt = e.touches ? e.touches[0] : e;
+    startX = pt.clientX;
+    startY = pt.clientY;
+    const rect = mini.getBoundingClientRect();
+    startLeft = rect.left;
+    startTop = rect.top;
+    mini.style.right = "auto";
+    mini.style.left = startLeft + "px";
+    mini.style.top = startTop + "px";
+    e.preventDefault();
+  };
+
+  const onMove = (e) => {
+    if (!dragging) return;
+    const pt = e.touches ? e.touches[0] : e;
+    const dx = pt.clientX - startX;
+    const dy = pt.clientY - startY;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) moved = true;
+    let nl = startLeft + dx;
+    let nt = startTop + dy;
+    const w = mini.offsetWidth, h = mini.offsetHeight;
+    nl = Math.max(0, Math.min(window.innerWidth - w, nl));
+    nt = Math.max(0, Math.min(window.innerHeight - h, nt));
+    mini.style.left = nl + "px";
+    mini.style.top = nt + "px";
+    e.preventDefault();
+  };
+
+  const onUp = () => {
+    if (!dragging) return;
+    dragging = false;
+    if (moved) {
+      const rect = mini.getBoundingClientRect();
+      state.call.miniPos = { left: rect.left, top: rect.top };
+      saveCall();
+    }
+  };
+
+  mini.addEventListener("mousedown", onDown);
+  window.addEventListener("mousemove", onMove);
+  window.addEventListener("mouseup", onUp);
+  mini.addEventListener("touchstart", onDown, { passive: false });
+  window.addEventListener("touchmove", onMove, { passive: false });
+  window.addEventListener("touchend", onUp);
+}
+
+/* ===== 按钮绑定 ===== */
+document.getElementById("hangupBtn").addEventListener("click", hangupCall);
+document.getElementById("callMiniHangup").addEventListener("click", hangupCall);
+document.getElementById("callMinimizeBtn").addEventListener("click", showCallMini);
+document.getElementById("callMiniEnlarge").addEventListener("click", showCallFull);
+
+bindMiniDrag();
+
+/* ===== 恢复通话 ===== */
+function restoreCallIfAny() {
+  if (!state.call || !state.call.inCall) return;
+  // 页面加载时如果通话中，显示小窗
+  const mini = document.getElementById("callMini");
+  mini.style.display = "flex";
+  paintCallAvatars();
+  applyMiniPos();
+  startCallTicker();
+}
 /* ========== 表情库 ========== */
 let emojiTab = "emoji";
 
@@ -3094,6 +3270,7 @@ function init() {
   if (!Array.isArray(state.letters))  { state.letters  = []; saveLetters();  }
   if (!Array.isArray(state.todos))    { state.todos    = []; saveTodos();    }
   startTodoChecker();
+  restoreCallIfAny();
 }
 
 init();

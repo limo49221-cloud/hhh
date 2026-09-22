@@ -909,3 +909,93 @@ html, body {
 .sticker-text {
   font-size: 26px;
 }
+
+/* ===== 通话小窗 ===== */
+.call-mini-btn {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255,255,255,0.15);
+  color: #fff;
+  font-size: 22px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+.call-mini-btn:active { background: rgba(255,255,255,0.3); }
+
+#callScreen { position: fixed; }
+
+.call-mini {
+  position: fixed;
+  top: calc(60px + env(safe-area-inset-top));
+  right: 16px;
+  width: 160px;
+  height: 220px;
+  background: linear-gradient(160deg, #2c3e50 0%, #1a1a2e 100%);
+  border-radius: 14px;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.35);
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  z-index: 9998;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+.call-mini:active { cursor: grabbing; }
+
+.call-mini-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: #07c160;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  color: #fff;
+  overflow: hidden;
+}
+.call-mini-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+.call-mini-name {
+  font-size: 13px;
+  font-weight: 600;
+  max-width: 90%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.call-mini-timer {
+  font-size: 14px;
+  color: #ccc;
+  font-variant-numeric: tabular-nums;
+}
+
+.call-mini-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.call-mini-btn.mini-enlarge,
+.call-mini-btn.mini-hangup {
+  position: static;
+  width: 34px;
+  height: 34px;
+  font-size: 16px;
+  background: rgba(255,255,255,0.15);
+}
+.call-mini-btn.mini-hangup { background: #fa5151; }
+.call-mini-btn.mini-hangup:active { background: #d94444; }
