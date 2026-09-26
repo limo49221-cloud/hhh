@@ -37,7 +37,11 @@ const DEFAULT_SETTINGS = {
   taReplyCommentProb: 40,
   taCombineProb: 10,
   taCombineMin: 1,
-  taCombineMax: 3
+  taCombineMax: 3,
+  taCallProb: 5,
+  taMultiReplyProb: 30,
+  taMultiMin: 2,
+  taMultiMax: 4
 };
 
 const state = {
@@ -70,7 +74,7 @@ const state = {
   dupIgnored: store.get("dupIgnored", []),
   pomodoro: store.get("pomodoro", { focusMin: 25, shortMin: 5, longMin: 15, todayCount: 0, totalCount: 0, date: "" }),
   desktopIcons: store.get("desktopIcons", null),
-  call: store.get("call", { inCall: false, startTs: 0, mini: false, miniPos: null })
+  call: store.get("call", { inCall: false, incoming: false, startTs: 0, mini: false, miniPos: null })
 };
 
 function saveSettings() { store.set("settings", state.settings); }
@@ -132,6 +136,10 @@ function toast(msg) {
 }
 
 function showScreen(id) {
+  // 来电中，除了来电界面，其他页面都不允许切
+  if (state.call && state.call.incoming && id !== "callIncoming") {
+    return;
+  }
   document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
   const el = document.getElementById(id);
   if (el) el.classList.add("active");
@@ -286,6 +294,16 @@ function openChat() {
   rollTaTime();
   renderMessages();
   applyAppearance();
+
+  // 打开聊天页时，按概率触发 TA 主动来电
+  if (!state.call.inCall && !state.call.incoming) {
+    if (Math.random() * 100 < (state.settings.taCallProb || 0)) {
+      setTimeout(() => {
+        // 延迟 1.5 秒后打来，更自然
+        incomingCall();
+      }, 1500);
+    }
+  }
 }
 function applyChatBackground() {
   const body = document.getElementById("chatBody");
@@ -729,6 +747,11 @@ function taReply() {
   body.scrollTop = body.scrollHeight;
   setTimeout(() => {
     typing.remove();
+    // 先判断"连发"
+    if (Math.random() * 100 < (state.settings.taMultiReplyProb || 0)) {
+      taMultiReply();
+      return;
+    }
     if (Math.random() * 100 < (state.settings.suggestProb || 0)) {
       if (taSuggest()) return;
     }
@@ -782,6 +805,31 @@ function taReply() {
     }
   }, rand(800, 1800));
 }
+function taMultiReply() {
+  const min = Math.max(2, Math.floor(state.settings.taMultiMin || 2));
+  const max = Math.max(min, Math.floor(state.settings.taMultiMax || 4));
+  const n = rand(min, max);
+
+  sendOneMultiCard();
+
+  for (let i = 1; i < n; i++) {
+    setTimeout(() => {
+      sendOneMultiCard();
+    }, i * rand(800, 1500));
+  }
+}
+function sendOneMultiCard() {
+  const card = drawCard();
+  if (!card) return;
+  const moodP = state.settings.moodProb || 0;
+  const intentP = state.settings.intentProb || 0;
+  const opts = {
+    isCard: true,
+    mood: Math.random() * 100 < moodP ? drawMood() : null,
+    intent: Math.random() * 100 < intentP ? drawIntent() : null
+  };
+  addBotMessage(card, opts);
+}
 function addBotMessage(text, opts = {}) {
   const d = nowBeijing();
   let sticker = null;
@@ -789,6 +837,7 @@ function addBotMessage(text, opts = {}) {
     const pool = [];
     (state.emojis.sticker || []).forEach(x => pool.push(x));
     (state.emojis.emoji || []).forEach(x => pool.push(x));
+    (state.emojis.kaomoji || []).forEach(x => pool.push(x));
     if (pool.length) sticker = pick(pool);
   }
   const msg = {
@@ -1144,8 +1193,77 @@ function performPoke(pokeText) {
     }, 1500);
   }
 }
+
 /* ========== 通话 ========== */
 let callTimerId = null;
+/* ===== 来电 ===== */
+let incomingTimerId = null;
+
+function incomingCall() {
+  if (state.call.inCall) return;      // 已在通话中，不打扰
+  if (state.call.incoming) return;    // 已在来电中，不重复
+
+  state.call.incoming = true;
+  saveCall();
+
+  // 渲染来电界面
+  paintIncomingAvatars();
+  document.getElementById("incomingName").textContent = state.settings.taName || "TA";
+  showScreen("callIncoming");
+
+  // 30 秒超时自动拒绝
+  clearTimeout(incomingTimerId);
+  incomingTimerId = setTimeout(() => {
+    if (state.call.incoming) {
+      rejectIncoming(true);
+    }
+  }, 30000);
+}
+
+function paintIncomingAvatars() {
+  const taAv = state.settings.taAvatar;
+  const el = document.getElementById("incomingAvatar");
+  if (!el) return;
+  if (taAv) el.innerHTML = `<img src="${taAv}">`;
+  else el.textContent = "TA";
+}
+
+function answerIncoming() {
+  if (!state.call.incoming) return;
+  clearTimeout(incomingTimerId);
+  state.call.incoming = false;
+  saveCall();
+
+  // 进入全屏通话
+  state.call.inCall = true;
+  state.call.startTs = Date.now();
+  state.call.mini = false;
+  state.call.miniPos = null;
+  saveCall();
+
+  showCallFull();
+  toast("已接听");
+}
+
+function rejectIncoming(isTimeout) {
+  if (!state.call.incoming) return;
+  clearTimeout(incomingTimerId);
+  state.call.incoming = false;
+  saveCall();
+
+  // 系统消息
+  const text = isTimeout ? `未接来电（${state.settings.taName}）` : `你拒绝了${state.settings.taName}的通话`;
+  state.messages.push({ id: uid(), type: "system", text, ts: Date.now() });
+  saveMessages();
+
+  showScreen("chatApp");
+  renderMessages();
+  toast(isTimeout ? "未接来电" : "已拒绝");
+}
+
+// 按钮绑定
+document.getElementById("incomingAnswerBtn").addEventListener("click", answerIncoming);
+document.getElementById("incomingRejectBtn").addEventListener("click", () => rejectIncoming(false));
 
 function fmtCallTime(sec) {
   return `${String(Math.floor(sec/3600)).padStart(2,"0")}:${String(Math.floor((sec%3600)/60)).padStart(2,"0")}:${String(sec%60).padStart(2,"0")}`;
@@ -1221,6 +1339,7 @@ function applyMiniPos() {
 
 function doCall() {
   if (state.call.inCall) { toast("已在通话中"); return; }
+  if (state.call.incoming) { toast("来电中"); return; }
   if (Math.random() * 100 < state.settings.callRejectProb) {
     state.messages.push({ id: uid(), type: "system", text: `对方已拒绝通话`, ts: Date.now() });
     saveMessages(); renderMessages(); toast("对方已拒绝");
@@ -3108,6 +3227,10 @@ function renderSettingsPage() {
     <div class="list-item"><div class="name">TA 发吃的（${s.eatProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.eatProb}" data-range="eatProb"></div></div>
     <div class="list-item"><div class="name">菜系比例（${s.eatDishRatio}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.eatDishRatio}" data-range="eatDishRatio"></div></div>
     <div class="list-item"><div class="name">TA 拼字卡（${s.taCombineProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.taCombineProb}" data-range="taCombineProb"></div></div>
+    <div class="list-item"><div class="name">TA 主动打来（${s.taCallProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.taCallProb}" data-range="taCallProb"></div></div>
+    <div class="list-item"><div class="name">TA 连发消息（${s.taMultiReplyProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.taMultiReplyProb}" data-range="taMultiReplyProb"></div></div>
+    <div class="list-item"><div class="name">连发最少条数（${s.taMultiMin}）</div><div class="actions"><input type="range" min="2" max="6" value="${s.taMultiMin}" data-range="taMultiMin"></div></div>
+    <div class="list-item"><div class="name">连发最多条数（${s.taMultiMax}）</div><div class="actions"><input type="range" min="2" max="6" value="${s.taMultiMax}" data-range="taMultiMax"></div></div>
     <div class="list-item"><div class="name">拼字卡最少张数（${s.taCombineMin}）</div><div class="actions"><input type="range" min="1" max="10" value="${s.taCombineMin}" data-range="taCombineMin"></div></div>
     <div class="list-item"><div class="name">拼字卡最多张数（${s.taCombineMax}）</div><div class="actions"><input type="range" min="1" max="10" value="${s.taCombineMax}" data-range="taCombineMax"></div></div>
     <div class="list-item"><div class="name">拍一拍文案库</div><div class="actions"><button data-pokemgr>管理（${state.pokeTexts.length}）</button></div></div>`;
