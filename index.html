@@ -8,7 +8,22 @@
 </head>
 <body>
 
-<div id="desktop" class="screen active">
+<!-- ===== 登录页（新增） ===== -->
+<div id="loginApp" class="screen active">
+  <div class="login-wrap">
+    <div class="login-title">我的小站</div>
+    <div class="login-sub">登录后，手机和电脑数据同步</div>
+    <div class="login-form">
+      <input class="input" id="loginEmail" type="email" placeholder="邮箱" autocomplete="email">
+      <input class="input" id="loginPassword" type="password" placeholder="密码（至少 6 位）" autocomplete="current-password">
+      <button class="btn" id="loginBtn" style="width:100%;">登录</button>
+      <button class="btn secondary" id="registerBtn" style="width:100%;">注册新账号</button>
+      <div class="login-msg" id="loginMsg"></div>
+    </div>
+  </div>
+</div>
+
+<div id="desktop" class="screen">
   <div class="desktop-status">
     <span id="desktopTime">--:--</span>
     <span id="desktopDate"></span>
@@ -192,7 +207,6 @@
   <div class="page-body" id="settingsBody"></div>
 </div>
 
-<!-- ===== 来电界面（新增） ===== -->
 <div id="callIncoming" class="screen">
   <div class="call-wrap">
     <div class="call-avatar" id="incomingAvatar">TA</div>
@@ -252,6 +266,7 @@
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="app.js"></script>
 </body>
 </html>

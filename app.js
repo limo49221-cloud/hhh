@@ -2,6 +2,44 @@
    我的小站 · 完整版（带搜索）
    ===================================================== */
 
+const SUPABASE_URL = "https://hbpjnnvfeldesgcixgvr.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhicGpubnZmZWxkZXNnY2l4Z3ZyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA3NTEyMTcsImV4cCI6MjEwNjMyNzIxN30.zJR1yEUWStqwCv6mUb01sd9Hn4bCa4QFQxfrH1vTPxk";
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let currentUser = null;
+let syncTimer = null;
+
+async function syncToCloud() {
+  if (!currentUser) return;
+  try {
+    await supabase.from("user_data").upsert({
+      user_id: currentUser.id,
+      cards: state.cards,
+      messages: state.messages,
+      settings: state.settings,
+      moments: state.moments,
+      todos: state.todos,
+      wishlist: state.wishlist,
+      water: state.water,
+      pomodoro: state.pomodoro,
+      emojis: state.emojis
+    });
+  } catch (e) { console.warn("同步失败", e); }
+}
+
+function scheduleSync() {
+  if (!currentUser) return;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(syncToCloud, 2000);
+}
+
+async function loadFromCloud() {
+  if (!currentUser) return null;
+  const { data, error } = await supabase.from("user_data").select("*").eq("user_id", currentUser.id).maybeSingle();
+  if (error) { console.warn(error); return null; }
+  return data;
+}
+
 const store = {
   get(key, def) {
     try { const v = JSON.parse(localStorage.getItem(key)); return v === null ? def : v; }
@@ -77,22 +115,22 @@ const state = {
   call: store.get("call", { inCall: false, incoming: false, startTs: 0, mini: false, miniPos: null })
 };
 
-function saveSettings() { store.set("settings", state.settings); }
-function saveCards() { store.set("cards", state.cards); }
+function saveSettings() { store.set("settings", state.settings); scheduleSync(); }
+function saveCards() { store.set("cards", state.cards); scheduleSync(); }
 function savePokeTexts() { store.set("pokeTexts", state.pokeTexts); }
-function saveMessages() { store.set("messages", state.messages); }
+function saveMessages() { store.set("messages", state.messages); scheduleSync(); }
 function saveFavMine() { store.set("favoritesMine", state.favoritesMine); }
 function saveFavTa() { store.set("favoritesTa", state.favoritesTa); }
-function saveEmojis() { store.set("emojis", state.emojis); }
-function saveMoments() { store.set("moments", state.moments); }
-function saveWater() { store.set("water", state.water); }
-function saveTodos() { store.set("todos", state.todos); }
-function saveWishlist() { store.set("wishlist", state.wishlist); }
+function saveEmojis() { store.set("emojis", state.emojis); scheduleSync(); }
+function saveMoments() { store.set("moments", state.moments); scheduleSync(); }
+function saveWater() { store.set("water", state.water); scheduleSync(); }
+function saveTodos() { store.set("todos", state.todos); scheduleSync(); }
+function saveWishlist() { store.set("wishlist", state.wishlist); scheduleSync(); }
 function saveSuggestHistory() { store.set("suggestHistory", state.suggestHistory); }
 function saveCheckins() { store.set("checkins", state.checkins); }
 function saveLetters() { store.set("letters", state.letters); }
 function saveDupIgnored() { store.set("dupIgnored", state.dupIgnored); }
-function savePomodoro() { store.set("pomodoro", state.pomodoro); }
+function savePomodoro() { store.set("pomodoro", state.pomodoro); scheduleSync(); }
 function saveDesktopIcons() { store.set("desktopIcons", state.desktopIcons); }
 function saveCall() { store.set("call", state.call); }
 
@@ -3233,7 +3271,12 @@ function renderSettingsPage() {
     <div class="list-item"><div class="name">连发最多条数（${s.taMultiMax}）</div><div class="actions"><input type="range" min="2" max="6" value="${s.taMultiMax}" data-range="taMultiMax"></div></div>
     <div class="list-item"><div class="name">拼字卡最少张数（${s.taCombineMin}）</div><div class="actions"><input type="range" min="1" max="10" value="${s.taCombineMin}" data-range="taCombineMin"></div></div>
     <div class="list-item"><div class="name">拼字卡最多张数（${s.taCombineMax}）</div><div class="actions"><input type="range" min="1" max="10" value="${s.taCombineMax}" data-range="taCombineMax"></div></div>
-    <div class="list-item"><div class="name">拍一拍文案库</div><div class="actions"><button data-pokemgr>管理（${state.pokeTexts.length}）</button></div></div>`;
+    <div class="list-item"><div class="name">拍一拍文案库</div><div class="actions"><button data-pokemgr>管理（${state.pokeTexts.length}）</button></div></div>
+    <div class="list-item"><div class="name">账号</div><div class="actions"><button class="danger" id="logoutBtn">退出登录</button></div></div>`;
+  const logoutBtn = body.querySelector("#logoutBtn");
+  if (logoutBtn) logoutBtn.addEventListener("click", () => {
+    if (confirm("退出登录？")) doLogout();
+  });
   body.querySelectorAll("[data-edit]").forEach(btn => {
     btn.addEventListener("click", () => {
       const k = btn.dataset.edit;
@@ -3325,6 +3368,74 @@ function applyAppearance() {
   applyChatBackground();
 }
 
+/* ========== 登录 ========== */
+function showLoginMsg(msg) {
+  const el = document.getElementById("loginMsg");
+  if (el) el.textContent = msg || "";
+}
+
+async function doLogin() {
+  const email = document.getElementById("loginEmail").value.trim();
+  const password = document.getElementById("loginPassword").value;
+  if (!email || !password) return showLoginMsg("请填邮箱和密码");
+  showLoginMsg("");
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) return showLoginMsg(error.message);
+  currentUser = data.user;
+  await onLoggedIn();
+}
+
+async function doRegister() {
+  const email = document.getElementById("loginEmail").value.trim();
+  const password = document.getElementById("loginPassword").value;
+  if (!email || !password) return showLoginMsg("请填邮箱和密码");
+  if (password.length < 6) return showLoginMsg("密码至少 6 位");
+  showLoginMsg("");
+  const { data, error } = await supabase.auth.signUp({ email, password });
+  if (error) return showLoginMsg(error.message);
+  if (data.session) {
+    currentUser = data.user;
+    await onLoggedIn();
+  } else {
+    showLoginMsg("注册成功，请登录");
+  }
+}
+
+async function doLogout() {
+  await supabase.auth.signOut();
+  currentUser = null;
+  showScreen("loginApp");
+}
+
+async function onLoggedIn() {
+  const cloud = await loadFromCloud();
+  if (cloud) {
+    if (cloud.cards) state.cards = cloud.cards;
+    if (cloud.messages) state.messages = cloud.messages;
+    if (cloud.settings) state.settings = Object.assign({}, DEFAULT_SETTINGS, cloud.settings);
+    if (cloud.moments) state.moments = cloud.moments;
+    if (cloud.todos) state.todos = cloud.todos;
+    if (cloud.wishlist) state.wishlist = cloud.wishlist;
+    if (cloud.water) state.water = cloud.water;
+    if (cloud.pomodoro) state.pomodoro = cloud.pomodoro;
+    if (cloud.emojis) state.emojis = cloud.emojis;
+    store.set("cards", state.cards);
+    store.set("messages", state.messages);
+    store.set("settings", state.settings);
+    store.set("moments", state.moments);
+    store.set("todos", state.todos);
+    store.set("wishlist", state.wishlist);
+    store.set("water", state.water);
+    store.set("pomodoro", state.pomodoro);
+    store.set("emojis", state.emojis);
+  } else {
+    await syncToCloud();
+  }
+  applyAppearance();
+  renderDesktop();
+  showScreen("desktop");
+}
+
 /* ========== 初始化 ========== */
 function init() {
   renderDesktop();
@@ -3394,6 +3505,22 @@ function init() {
   if (!Array.isArray(state.todos))    { state.todos    = []; saveTodos();    }
   startTodoChecker();
   restoreCallIfAny();
+
+  document.getElementById("loginBtn").addEventListener("click", doLogin);
+  document.getElementById("registerBtn").addEventListener("click", doRegister);
+
+  supabase.auth.onAuthStateChange((event, session) => {
+    currentUser = session ? session.user : null;
+  });
+
+  supabase.auth.getSession().then(({ data }) => {
+    if (data && data.session) {
+      currentUser = data.session.user;
+      onLoggedIn();
+    } else {
+      showScreen("loginApp");
+    }
+  });
 }
 
 init();

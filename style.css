@@ -1018,3 +1018,44 @@ html, body {
 }
 .call-btn.reject { background: #fa5151; }
 .call-btn.answer { background: #07c160; }
+/* ===== 登录页 ===== */
+#loginApp {
+  background: linear-gradient(160deg, #f7f7fa 0%, #eef0f5 100%);
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.login-wrap {
+  width: 100%;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.login-title {
+  font-size: 28px;
+  font-weight: 700;
+  text-align: center;
+  color: #1c1c1e;
+}
+.login-sub {
+  font-size: 13px;
+  color: #999;
+  text-align: center;
+  margin-top: -8px;
+}
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: #fff;
+  padding: 20px;
+  border-radius: 14px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+}
+.login-msg {
+  font-size: 13px;
+  color: #fa5151;
+  text-align: center;
+  min-height: 18px;
+}
