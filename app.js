@@ -4,10 +4,27 @@
 
 const SUPABASE_URL = "https://hbpjnnvfeldesgcixgvr.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhicGpubnZmZWxkZXNnY2l4Z3ZyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA3NTEyMTcsImV4cCI6MjEwNjMyNzIxN30.zJR1yEUWStqwCv6mUb01sd9Hn4bCa4QFQxfrH1vTPxk";
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// 不直接创建，等 SDK 加载好了再创建
+let supabase = null;
 
 let currentUser = null;
 let syncTimer = null;
+
+// 把错误显示到登录页，手机也能看到
+function showLoginError(msg) {
+  const el = document.getElementById("loginMsg");
+  if (el) el.textContent = msg || "";
+  console.log("[LOGIN ERROR]", msg);
+}
+
+window.addEventListener("error", (e) => {
+  showLoginError("错误：" + (e.message || "未知错误"));
+});
+window.addEventListener("unhandledrejection", (e) => {
+  const r = e.reason;
+  showLoginError("错误：" + (r && r.message ? r.message : String(r)));
+});
 
 async function syncToCloud() {
   if (!currentUser) return;
@@ -3523,4 +3540,24 @@ function init() {
   });
 }
 
-init();
+/* ===== 等 Supabase SDK 加载完成再启动 ===== */
+function waitForSupabase(tries) {
+  tries = tries || 0;
+  if (window.supabase && typeof window.supabase.createClient === "function") {
+    try {
+      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+      console.log("Supabase 初始化成功");
+      init();
+    } catch (err) {
+      showLoginError("初始化失败：" + err.message);
+    }
+    return;
+  }
+  if (tries >= 60) {
+    showLoginError("网络库加载失败，请检查网络后刷新");
+    return;
+  }
+  setTimeout(() => waitForSupabase(tries + 1), 100);
+}
+
+waitForSupabase();
