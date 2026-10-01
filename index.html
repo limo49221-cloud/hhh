@@ -8,7 +8,7 @@
 </head>
 <body>
 
-<!-- ===== 登录页（新增） ===== -->
+<!-- ===== 登录页 ===== -->
 <div id="loginApp" class="screen active">
   <div class="login-wrap">
     <div class="login-title">我的小站</div>
@@ -47,9 +47,10 @@
   <div class="chat-body" id="chatBody"></div>
   <div class="chat-inputbar">
     <button class="input-btn" id="voiceBtn" data-icon="ui-mic"></button>
-<input id="chatInput" placeholder="" autocomplete="off">
-<button class="input-btn" id="imgBtn" data-icon="ui-image"></button>
-<button class="input-btn" id="emojiBtn" data-icon="ui-smile"></button>
+    <input id="chatInput" placeholder="" autocomplete="off">
+    <button class="input-btn" id="imgBtn" data-icon="ui-image"></button>
+    <button class="input-btn" id="emojiBtn" data-icon="ui-smile"></button>
+    <button class="send-btn" id="sendBtn" disabled>发送</button>
   </div>
   <input type="file" id="imgFile" accept="image/*" hidden>
 </div>
@@ -266,8 +267,6 @@
   </div>
 </div>
 
-<script src="https://unpkg.com/lucide@latest"></script>
-<script src="https://unpkg.com/lucide@latest"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.js"></script>
 <script src="icons.js"></script>
