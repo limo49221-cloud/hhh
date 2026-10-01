@@ -171,9 +171,11 @@ const state = {
   dupIgnored: store.get("dupIgnored", []),
   pomodoro: store.get("pomodoro", { focusMin: 25, shortMin: 5, longMin: 15, todayCount: 0, totalCount: 0, date: "" }),
   desktopIcons: store.get("desktopIcons", null),
-  call: store.get("call", { inCall: false, incoming: false, startTs: 0, mini: false, miniPos: null })
+  call: store.get("call", { inCall: false, incoming: false, startTs: 0, mini: false, miniPos: null }),
+  lastSeen: store.get("lastSeen", { chat: 0, letters: 0, moments: 0 })
 };
 
+function saveLastSeen() { store.set("lastSeen", state.lastSeen); }
 function saveSettings() { store.set("settings", state.settings); scheduleSync(); }
 function saveCards() { store.set("cards", state.cards); scheduleSync(); }
 function savePokeTexts() { store.set("pokeTexts", state.pokeTexts); scheduleSync(); }
@@ -332,8 +334,9 @@ function renderDesktop() {
     icons.slice(p * perPage, (p + 1) * perPage).forEach(ic => {
       const item = document.createElement("div");
       item.className = "desktop-item";
+      item.dataset.action = ic.action;
       item.innerHTML = `
-        <div class="desktop-icon">${ic.icon && ic.icon.startsWith("data:") ? `<img src="${ic.icon}">` : esc(ic.icon || "📱")}</div>
+        <div class="desktop-icon" style="position:relative;">${ic.icon && ic.icon.startsWith("data:") ? `<img src="${ic.icon}">` : esc(ic.icon || "📱")}<span class="badge" data-badge="${ic.action}"></span></div>
         <div class="desktop-name">${esc(ic.name)}</div>`;
       item.addEventListener("click", () => {
         const map = {
@@ -399,6 +402,10 @@ function openChat() {
   rollTaTime();
   renderMessages();
   applyAppearance();
+  // 清零聊天红点
+  state.lastSeen.chat = Date.now();
+  saveLastSeen();
+  updateBadges();
 
   // 打开聊天页时，按概率触发 TA 主动来电
   if (!state.call.inCall && !state.call.incoming) {
@@ -1000,6 +1007,7 @@ function addBotMessage(text, opts = {}) {
     body.scrollTop = body.scrollHeight;
   }
   showNotification(msg);
+  updateBadges();
 
   // TA 随机撤回整条
   const recallP = state.settings.taRecallProb || 0;
@@ -1613,9 +1621,6 @@ function renderEmojiManager() {
   }
   body.innerHTML = "";
 
-  let selected = new Set();
-  let batchMode = false;
-
   const tabs = document.createElement("div");
   tabs.className = "emoji-tabs";
   tabs.style.cssText = "display:flex;gap:8px;margin-bottom:12px;";
@@ -1631,29 +1636,13 @@ function renderEmojiManager() {
     btn.textContent = t.label + `（${state.emojis[t.key].length}）`;
     btn.addEventListener("click", () => {
       emojiTab = t.key;
-      selected.clear();
-      batchMode = false;
       renderEmojiManager();
     });
     tabs.appendChild(btn);
   });
   body.appendChild(tabs);
 
-  const toolBar = document.createElement("div");
-  toolBar.className = "row";
-  toolBar.style.marginBottom = "12px";
-  toolBar.innerHTML = `
-    <button class="btn secondary" id="emojiDupBtn" style="flex:1;">❗️ 查重</button>
-    <button class="btn secondary" id="emojiBatchToggleBtn" style="flex:1;">批量</button>
-  `;
-  body.appendChild(toolBar);
-  toolBar.querySelector("#emojiDupBtn").addEventListener("click", () => openEmojiDupCheck(emojiTab));
-  toolBar.querySelector("#emojiBatchToggleBtn").addEventListener("click", () => {
-    batchMode = !batchMode;
-    selected.clear();
-    renderEmojiManager();
-  });
-
+  // 添加区
   const addArea = document.createElement("div");
   addArea.className = "row";
   addArea.style.marginBottom = "12px";
@@ -1670,98 +1659,58 @@ function renderEmojiManager() {
   }
   body.appendChild(addArea);
 
-  const listWrap = document.createElement("div");
-  listWrap.id = "emojiMgrList";
-  body.appendChild(listWrap);
+  // 查重按钮
+  const dupBtn = document.createElement("button");
+  dupBtn.className = "btn secondary";
+  dupBtn.style.cssText = "width:100%;margin-bottom:12px;";
+  dupBtn.textContent = "❗️ 查重";
+  dupBtn.addEventListener("click", () => openEmojiDupCheck(emojiTab));
+  body.appendChild(dupBtn);
 
-  if (batchMode) {
-    const bar = document.createElement("div");
-    bar.style.cssText = "position:sticky;bottom:8px;background:#fff;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,0.12);padding:10px 12px;display:flex;align-items:center;gap:8px;margin-top:10px;";
-    bar.innerHTML = `
-      <div style="flex:1;font-size:13px;color:#666;">已选 <span id="emojiSelCount">0</span> 项</div>
-      <button class="btn secondary" id="emojiSelAll" style="font-size:13px;">全选</button>
-      <button class="btn danger" id="emojiDelSel" style="font-size:13px;">删除</button>
-      <button class="btn secondary" id="emojiCancelSel" style="font-size:13px;">取消</button>
-    `;
-    body.appendChild(bar);
-    bar.querySelector("#emojiSelAll").addEventListener("click", () => {
-      const list = state.emojis[emojiTab];
-      if (selected.size === list.length) selected.clear();
-      else list.forEach((_, i) => selected.add(i));
-      refreshBatchBar();
-      renderList();
-    });
-    bar.querySelector("#emojiDelSel").addEventListener("click", () => {
-      if (!selected.size) return toast("还没选");
-      if (!confirm(`删除选中的 ${selected.size} 项？`)) return;
-      const list = state.emojis[emojiTab];
-      const keep = [];
-      list.forEach((item, i) => { if (!selected.has(i)) keep.push(item); });
-      state.emojis[emojiTab] = keep;
-      saveEmojis();
-      selected.clear();
-      renderEmojiManager();
-      toast("已删除");
-    });
-    bar.querySelector("#emojiCancelSel").addEventListener("click", () => {
-      batchMode = false;
-      selected.clear();
-      renderEmojiManager();
-    });
-  }
+  // 网格区
+  const grid = document.createElement("div");
+  grid.style.cssText = "display:grid;grid-template-columns:repeat(5,1fr);gap:8px;";
+  body.appendChild(grid);
 
-  function refreshBatchBar() {
-    const el = document.getElementById("emojiSelCount");
-    if (el) el.textContent = selected.size;
-  }
-
-  const renderList = () => {
-    const list = state.emojis[emojiTab];
-    listWrap.innerHTML = "";
-    if (!list.length) {
-      listWrap.innerHTML = `<div class="empty">还没有内容</div>`;
-      return;
-    }
+  const list = state.emojis[emojiTab];
+  if (!list.length) {
+    grid.innerHTML = `<div class="empty" style="grid-column:1/-1;">还没有内容</div>`;
+  } else {
     list.forEach((item, i) => {
-      const row = document.createElement("div");
-      row.className = "list-item";
       const isImg = item.startsWith("data:");
-      const preview = isImg
-        ? `<img src="${item}" style="width:48px;height:48px;object-fit:cover;border-radius:6px;">`
-        : `<span style="font-size:22px;word-break:break-all;">${esc(item)}</span>`;
-      const checked = selected.has(i) ? "checked" : "";
-      row.innerHTML = `
-        <div class="name" style="display:flex;align-items:center;gap:10px;">
-          ${batchMode ? `<input type="checkbox" class="emoji-check" ${checked} data-i="${i}">` : ""}
-          ${preview}
-        </div>
-        <div class="actions">
-          ${batchMode ? "" : `<button class="danger" data-del>删除</button>`}
-        </div>
-      `;
-      const cb = row.querySelector(".emoji-check");
-      if (cb) {
-        cb.addEventListener("change", e => {
-          if (e.target.checked) selected.add(i);
-          else selected.delete(i);
-          refreshBatchBar();
-        });
-      }
-      const delBtn = row.querySelector("[data-del]");
-      if (delBtn) {
-        delBtn.addEventListener("click", () => {
-          if (!confirm("删除？")) return;
-          list.splice(i, 1);
-          saveEmojis();
-          renderEmojiManager();
-        });
-      }
-      listWrap.appendChild(row);
-    });
-    refreshBatchBar();
-  };
-  renderList();
+      const cell = document.createElement("div");
+      cell.style.cssText = "position:relative;aspect-ratio:1/1;background:#f7f7f7;border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer;";
 
+      // 内容
+      if (isImg) {
+        cell.innerHTML = `<img src="${item}" style="width:100%;height:100%;object-fit:cover;">`;
+      } else {
+        cell.innerHTML = `<span style="font-size:${emojiTab === "kaomoji" ? "13px" : "28px"};text-align:center;word-break:break-all;padding:4px;line-height:1.2;">${esc(item)}</span>`;
+      }
+
+      // 右上角 x
+      const xBtn = document.createElement("div");
+      xBtn.textContent = "×";
+      xBtn.style.cssText = "position:absolute;top:2px;right:2px;width:18px;height:18px;line-height:16px;text-align:center;border-radius:50%;background:rgba(255,255,255,0.85);color:#999;font-size:14px;cursor:pointer;user-select:none;";
+      xBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (!confirm("删除这个？")) return;
+        list.splice(i, 1);
+        saveEmojis();
+        renderEmojiManager();
+      });
+      cell.appendChild(xBtn);
+
+      // 点击格子 = 复制到剪贴板（可选，或空着）
+      cell.addEventListener("click", () => {
+        // 暂时什么都不做，或者可以预览
+      });
+
+      grid.appendChild(cell);
+    });
+  }
+
+  // 添加逻辑
   if (emojiTab === "emoji" || emojiTab === "kaomoji") {
     const inp = addArea.querySelector("#emojiNewInput");
     const btn = addArea.querySelector("#emojiNewBtn");
@@ -2293,6 +2242,56 @@ function openMoments() {
   if (Math.random() * 100 < state.settings.taMomentsProb) {
     setTimeout(taPostMoment, 1500);
   }
+  // 清零朋友圈红点
+  state.lastSeen.moments = Date.now();
+  saveLastSeen();
+  updateBadges();
+}
+
+/* 删除全部动态 */
+function openClearMoments() {
+  openModal("删除动态", () => {
+    const wrap = document.createElement("div");
+    const mineCount = state.moments.filter(m => m.from === "me").length;
+    const taCount = state.moments.filter(m => m.from === "ta").length;
+    wrap.innerHTML = `
+      <div style="font-size:13px;color:#666;margin-bottom:12px;">
+        我的：${mineCount} 条 · TA 的：${taCount} 条 · 共 ${state.moments.length} 条
+      </div>
+    `;
+    const items = [
+      { label: `删除我的动态（${mineCount} 条）`, cls: "danger", fn: () => {
+        state.moments = state.moments.filter(m => m.from !== "me");
+        saveMoments(); renderMoments(); toast("已删除我的动态");
+      }},
+      { label: `删除 TA 的动态（${taCount} 条）`, cls: "danger", fn: () => {
+        state.moments = state.moments.filter(m => m.from !== "ta");
+        saveMoments(); renderMoments(); toast("已删除 TA 的动态");
+      }},
+      { label: `全部删除（${state.moments.length} 条）`, cls: "danger", fn: () => {
+        if (!confirm("确定全部删除？")) return;
+        state.moments = [];
+        saveMoments(); renderMoments(); toast("已全部删除");
+      }}
+    ];
+    items.forEach(it => {
+      const btn = document.createElement("button");
+      btn.className = "btn " + (it.cls || "secondary");
+      btn.style.cssText = "width:100%;margin-top:8px;";
+      btn.textContent = it.label;
+      btn.addEventListener("click", () => {
+        if (it.label.includes("全部")) {
+          // 全部删除走自己的 confirm
+        } else if (!confirm("确定删除？不可恢复。")) {
+          return;
+        }
+        it.fn();
+        modal.classList.remove("open");
+      });
+      wrap.appendChild(btn);
+    });
+    return wrap;
+  });
 }
 function renderMoments() {
   const body = document.getElementById("momentsBody");
@@ -2310,9 +2309,22 @@ function renderMoments() {
     const comments = m.comments || [];
     let commentsHtml = "";
     if (comments.length) {
-      commentsHtml = `<div class="moment-comments">` + comments.map(c =>
-        `<div class="moment-comment"><span class="mc-name">${esc(c.from === "me" ? state.settings.myName : state.settings.taName)}：</span>${esc(c.text)}</div>`
-      ).join("") + `</div>`;
+      // 只渲染顶层评论（replyTo 为空的）
+      const topComments = comments.filter(c => !c.replyTo);
+      commentsHtml = `<div class="moment-comments">` + topComments.map(c => {
+        // 这条评论的所有回复
+        const replies = comments.filter(r => r.replyTo === c.id);
+        const repliesHtml = replies.map(r =>
+          `<div class="moment-comment" style="padding-left:24px;">
+            <span class="mc-name">${esc(r.from === "me" ? state.settings.myName : state.settings.taName)}：</span>${esc(r.text)}
+            <span data-reply-to="${c.id}" style="color:#576b95;font-size:12px;cursor:pointer;margin-left:6px;">回复</span>
+          </div>`
+        ).join("");
+        return `<div class="moment-comment">
+          <span class="mc-name">${esc(c.from === "me" ? state.settings.myName : state.settings.taName)}：</span>${esc(c.text)}
+          <span data-reply-to="${c.id}" style="color:#576b95;font-size:12px;cursor:pointer;margin-left:6px;">回复</span>
+        </div>` + repliesHtml;
+      }).join("") + `</div>`;
     }
     post.innerHTML = `
       <div class="moment-head">
@@ -2343,7 +2355,7 @@ function renderMoments() {
       if (!v) return;
       if (!m.comments) m.comments = [];
       const myText = v.trim();
-      m.comments.push({ from: "me", text: myText, time: fmtFull(nowBeijing()) });
+      m.comments.push({ id: uid(), from: "me", text: myText, time: fmtFull(nowBeijing()) });
       saveMoments(); renderMoments();
       taReplyToMyComment(m, myText);
     });
@@ -2357,6 +2369,29 @@ function renderMoments() {
       state.moments = state.moments.filter(x => x.id !== m.id);
       saveMoments(); renderMoments();
     });
+
+    // 回复评论
+    post.querySelectorAll("[data-reply-to]").forEach(el => {
+      el.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const replyToId = el.dataset.replyTo;
+        const parent = comments.find(c => c.id === replyToId);
+        if (!parent) return;
+        const v = prompt(`回复 ${parent.from === "me" ? state.settings.myName : state.settings.taName}：`);
+        if (!v) return;
+        const myText = v.trim();
+        comments.push({
+          id: uid(),
+          from: "me",
+          text: myText,
+          time: fmtFull(nowBeijing()),
+          replyTo: replyToId
+        });
+        saveMoments(); renderMoments();
+        taReplyToMyComment(m, myText);
+      });
+    });
+
     body.appendChild(post);
   });
 }
@@ -2375,34 +2410,38 @@ function taPostMoment() {
   saveMoments();
   const mScreen = document.getElementById("momentsApp");
   if (mScreen && mScreen.classList.contains("active")) renderMoments();
+  updateBadges();
   toast(`${state.settings.taName} 发了一条动态`);
 }
+
 function taCommentMoment(moment) {
   if (Math.random() * 100 < state.settings.taCommentProb) {
     const card = drawCard();
     if (!card) return;
     if (!moment.comments) moment.comments = [];
-    moment.comments.push({ from: "ta", text: card, time: fmtFull(nowBeijing()) });
+    moment.comments.push({ id: uid(), from: "ta", text: card, time: fmtFull(nowBeijing()) });
     saveMoments();
     const mScreen = document.getElementById("momentsApp");
     if (mScreen && mScreen.classList.contains("active")) renderMoments();
+    updateBadges();
     toast(`${state.settings.taName} 评论了你的动态`);
   }
 }
-
 function taReplyToMyComment(moment, myCommentText) {
   if (Math.random() * 100 >= state.settings.taReplyCommentProb) return;
   const card = drawCard();
   if (!card) return;
   setTimeout(() => {
     if (!moment.comments) moment.comments = [];
-    moment.comments.push({ from: "ta", text: card, time: fmtFull(nowBeijing()) });
+    moment.comments.push({ id: uid(), from: "ta", text: card, time: fmtFull(nowBeijing()) });
     saveMoments();
     const mScreen = document.getElementById("momentsApp");
     if (mScreen && mScreen.classList.contains("active")) renderMoments();
+    updateBadges();
     toast(`${state.settings.taName} 回复了你的评论`);
   }, rand(2000, 6000));
 }
+document.getElementById("momentsClearBtn").addEventListener("click", openClearMoments);
 document.getElementById("momentsNewBtn").addEventListener("click", () => {
   openModal("发动态", () => {
     const wrap = document.createElement("div");
@@ -2924,6 +2963,7 @@ function renderSurvey() {
 function openLetters() {
   showScreen("lettersApp");
   renderLetters();
+  updateBadges();
 }
 
 function renderLetters() {
@@ -3092,9 +3132,52 @@ function getUnreadLettersCount() {
   return state.letters.filter(l => l.from === "ta" && !l.read).length;
 }
 
-/* 第 3 批会真正实现，先占位避免报错 */
+/* ========== 桌面红点 ========== */
 function updateBadges() {
-  // 暂时留空
+  const lastSeen = state.lastSeen || { chat: 0, letters: 0, moments: 0 };
+
+  // 聊天未读：TA 发来的、时间戳 > lastSeen.chat 的消息数
+  const chatCount = state.messages.filter(m =>
+    m.from === "ta" &&
+    m.type !== "system" &&
+    m.type !== "poke" &&
+    m.ts > (lastSeen.chat || 0)
+  ).length;
+
+  // 信件未读：TA 发来、还没标记 read 的
+  const lettersCount = state.letters.filter(l => l.from === "ta" && !l.read).length;
+
+  // 朋友圈未读：TA 发的动态 + TA 的评论，时间戳 > lastSeen.moments
+  let momentsCount = 0;
+  state.moments.forEach(m => {
+    if (m.from === "ta" && m.ts > (lastSeen.moments || 0)) {
+      momentsCount++;
+    }
+    (m.comments || []).forEach(c => {
+      if (c.from === "ta" && c.ts > (lastSeen.moments || 0)) {
+        momentsCount++;
+      }
+    });
+  });
+
+  const counts = {
+    chat: chatCount,
+    letters: lettersCount,
+    moments: momentsCount
+  };
+
+  // 渲染所有红点
+  document.querySelectorAll("[data-badge]").forEach(el => {
+    const action = el.dataset.badge;
+    const n = counts[action] || 0;
+    if (n > 0) {
+      el.textContent = n > 99 ? "99+" : String(n);
+      el.style.cssText = "position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;line-height:18px;padding:0 5px;border-radius:9px;background:#fa5151;color:#fff;font-size:11px;font-weight:600;text-align:center;box-sizing:border-box;";
+    } else {
+      el.textContent = "";
+      el.style.cssText = "";
+    }
+  });
 }
 
 function openEat() {
@@ -3739,6 +3822,7 @@ async function onLoggedIn() {
 /* ========== 初始化 ========== */
 function init() {
   renderDesktop();
+  updateBadges();
   tickDesktopTime();
   setInterval(() => {
     const chat = document.getElementById("chatApp");
