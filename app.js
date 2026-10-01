@@ -38,7 +38,9 @@ async function syncToCloud() {
       emoji: state.emojis.emoji.length,
       kaomoji: state.emojis.kaomoji.length,
       sticker: state.emojis.sticker.length,
-      pokeTexts: state.pokeTexts.length
+      pokeTexts: state.pokeTexts.length,
+      letters: state.letters.length,
+      moments: state.moments.length
     });
     const { data, error } = await supabase.from("user_data").upsert({
       user_id: currentUser.id,
@@ -51,7 +53,8 @@ async function syncToCloud() {
       water: state.water,
       pomodoro: state.pomodoro,
       emojis: state.emojis,
-      pokeTexts: state.pokeTexts
+      pokeTexts: state.pokeTexts,
+      letters: state.letters
     });
     if (error) {
       console.error("[SYNC] 上传失败：", error);
@@ -131,7 +134,11 @@ const DEFAULT_SETTINGS = {
   taCallProb: 5,
   taMultiReplyProb: 30,
   taMultiMin: 2,
-  taMultiMax: 4
+  taMultiMax: 4,
+  letterReplyProb: 60,
+  letterReplyDelayMinH: 1,
+  letterReplyDelayMaxD: 1,
+  letterDebugFast: false
 };
 
 const state = {
@@ -188,7 +195,7 @@ function saveTodos() { store.set("todos", state.todos); scheduleSync(); }
 function saveWishlist() { store.set("wishlist", state.wishlist); scheduleSync(); }
 function saveSuggestHistory() { store.set("suggestHistory", state.suggestHistory); }
 function saveCheckins() { store.set("checkins", state.checkins); }
-function saveLetters() { store.set("letters", state.letters); }
+function saveLetters() { store.set("letters", state.letters); scheduleSync(); }
 function saveDupIgnored() { store.set("dupIgnored", state.dupIgnored); }
 function savePomodoro() { store.set("pomodoro", state.pomodoro); scheduleSync(); }
 function saveDesktopIcons() { store.set("desktopIcons", state.desktopIcons); }
@@ -2913,7 +2920,183 @@ function renderSurvey() {
     body.querySelector("#svD").value = "";
   });
 }
-function openLetters()  { showScreen("lettersApp"); document.getElementById("lettersBody").innerHTML = `<div class="empty">功能开发中…</div>`; }
+/* ========== 信件 ========== */
+function openLetters() {
+  showScreen("lettersApp");
+  renderLetters();
+}
+
+function renderLetters() {
+  const body = document.getElementById("lettersBody");
+  body.innerHTML = "";
+
+  // 顶部工具条
+  const toolBar = document.createElement("div");
+  toolBar.style.cssText = "display:flex;gap:8px;margin-bottom:12px;";
+  toolBar.innerHTML = `
+    <button class="btn" id="letterWriteBtn" style="flex:1;">✍️ 写一封信</button>
+    <button class="btn secondary" id="letterClearBtn">清空</button>
+  `;
+  body.appendChild(toolBar);
+
+  toolBar.querySelector("#letterWriteBtn").addEventListener("click", openWriteLetter);
+  toolBar.querySelector("#letterClearBtn").addEventListener("click", () => {
+    if (!state.letters.length) return toast("还没有信件");
+    if (!confirm(`清空全部 ${state.letters.length} 封信？`)) return;
+    state.letters = [];
+    saveLetters();
+    renderLetters();
+    updateBadges();
+    toast("已清空");
+  });
+
+  if (!state.letters.length) {
+    body.innerHTML += `<div class="empty">还没有信件，点上面「写一封信」开始</div>`;
+    return;
+  }
+
+  // 按时间倒序
+  [...state.letters].sort((a, b) => b.ts - a.ts).forEach(letter => {
+    const card = document.createElement("div");
+    card.className = "letter-item" + (letter.from === "ta" ? " from-ta" : "");
+    const unreadDot = (letter.from === "ta" && !letter.read) ? `<span style="display:inline-block;width:8px;height:8px;background:#fa5151;border-radius:50%;margin-right:6px;"></span>` : "";
+    const fromName = letter.from === "me" ? (state.settings.myName || "我") : (state.settings.taName || "TA");
+    card.innerHTML = `
+      <div class="letter-subject">${unreadDot}${esc(letter.subject || "(无标题)")}</div>
+      <div class="letter-body">${esc(letter.body || "")}</div>
+      ${letter.image ? `<img src="${letter.image}" style="max-width:100%;border-radius:8px;margin-top:8px;">` : ""}
+      <div class="letter-time">${fromName} · ${letter.time}</div>
+      <div style="display:flex;gap:8px;margin-top:10px;">
+        ${letter.from === "ta" ? `<button class="btn secondary" data-reply style="flex:1;font-size:13px;padding:6px;">↩️ 回信</button>` : ""}
+        <button class="btn danger" data-del style="font-size:13px;padding:6px 12px;">删除</button>
+      </div>
+    `;
+    // 点开即标记已读
+    card.addEventListener("click", (e) => {
+      if (e.target.closest("button")) return;
+      if (letter.from === "ta" && !letter.read) {
+        letter.read = true;
+        saveLetters();
+        renderLetters();
+        updateBadges();
+      }
+    });
+    const replyBtn = card.querySelector("[data-reply]");
+    if (replyBtn) replyBtn.addEventListener("click", () => openWriteLetter(letter));
+    card.querySelector("[data-del]").addEventListener("click", () => {
+      if (!confirm("删除这封信？")) return;
+      state.letters = state.letters.filter(l => l.id !== letter.id);
+      saveLetters();
+      renderLetters();
+      updateBadges();
+    });
+    body.appendChild(card);
+  });
+}
+
+function openWriteLetter(replyTo) {
+  const isReply = !!replyTo;
+  openModal(isReply ? "回信" : "写一封信", () => {
+    const wrap = document.createElement("div");
+    wrap.innerHTML = `
+      ${isReply ? `<div style="background:#f7f7f7;padding:8px 12px;border-radius:8px;font-size:13px;color:#666;margin-bottom:10px;">回复：${esc(replyTo.subject || "(无标题)")}</div>` : ""}
+      <div class="row"><input class="input" id="letterSubject" placeholder="标题（可空）" value="${isReply ? "Re: " + esc(replyTo.subject || "") : ""}"></div>
+      <div class="row"><textarea class="input" id="letterBody" style="height:120px;padding:8px;font-family:inherit;resize:vertical;" placeholder="正文…"></textarea></div>
+      <div class="row"><input type="file" id="letterImg" accept="image/*" hidden><button class="btn secondary" id="letterImgBtn" style="width:100%">添加图片（可选）</button></div>
+      <div id="letterImgPreview"></div>
+      <button class="btn" id="letterSendBtn" style="width:100%;margin-top:10px;">寄出</button>
+    `;
+    let imgData = null;
+    wrap.querySelector("#letterImgBtn").addEventListener("click", () => wrap.querySelector("#letterImg").click());
+    wrap.querySelector("#letterImg").addEventListener("change", async () => {
+      const f = wrap.querySelector("#letterImg").files[0];
+      if (!f) return;
+      imgData = await compressImage(f, 800, 0.8);
+      wrap.querySelector("#letterImgPreview").innerHTML = `<img src="${imgData}" style="max-width:100%;border-radius:8px;margin-top:8px;">`;
+    });
+    wrap.querySelector("#letterSendBtn").addEventListener("click", () => {
+      const subject = wrap.querySelector("#letterSubject").value.trim();
+      const bodyText = wrap.querySelector("#letterBody").value.trim();
+      if (!bodyText && !imgData) return toast("写点什么吧");
+      const letter = {
+        id: uid(),
+        from: "me",
+        subject: subject || "(无标题)",
+        body: bodyText,
+        image: imgData,
+        time: fmtFull(nowBeijing()),
+        ts: Date.now(),
+        read: true
+      };
+      state.letters.push(letter);
+      saveLetters();
+      modal.classList.remove("open");
+      renderLetters();
+      toast("已寄出");
+
+      // TA 按概率回信
+      const replyProb = state.settings.letterReplyProb ?? 60;
+      if (Math.random() * 100 < replyProb) {
+        let minMs, maxMs;
+        if (state.settings.letterDebugFast) {
+          // 调试模式：3-8 秒
+          minMs = 3000;
+          maxMs = 8000;
+        } else {
+          minMs = (state.settings.letterReplyDelayMinH ?? 1) * 3600 * 1000;      // 小时 → 毫秒
+          maxMs = (state.settings.letterReplyDelayMaxD ?? 1) * 24 * 3600 * 1000; // 天 → 毫秒
+        }
+        setTimeout(() => {
+          taWriteLetter(letter.subject);
+        }, rand(minMs, maxMs));
+      }
+    });
+    return wrap;
+  });
+}
+
+function taWriteLetter(replyToSubject) {
+  const card = drawCard();
+  if (!card) return;
+  const letter = {
+    id: uid(),
+    from: "ta",
+    subject: replyToSubject ? "Re: " + replyToSubject : "写给你",
+    body: card,
+    image: null,
+    time: fmtFull(nowBeijing()),
+    ts: Date.now(),
+    read: false
+  };
+  state.letters.push(letter);
+  saveLetters();
+  updateBadges();
+
+  // 通知
+  const msg = {
+    id: uid(), from: "ta",
+    text: `【来信】${letter.subject}`,
+    time: fmtTime(nowBeijing()), ts: Date.now()
+  };
+  showNotification(msg);
+
+  // 如果当前在信件页，刷新一下
+  const letterScreen = document.getElementById("lettersApp");
+  if (letterScreen && letterScreen.classList.contains("active")) {
+    renderLetters();
+  }
+  toast(`${state.settings.taName} 给你写了一封信`);
+}
+
+function getUnreadLettersCount() {
+  return state.letters.filter(l => l.from === "ta" && !l.read).length;
+}
+
+/* 第 3 批会真正实现，先占位避免报错 */
+function updateBadges() {
+  // 暂时留空
+}
+
 function openEat() {
   showScreen("eatApp");
   renderEat();
@@ -3374,6 +3557,10 @@ function renderSettingsPage() {
     <div class="list-item"><div class="name">连发最多条数（${s.taMultiMax}）</div><div class="actions"><input type="range" min="2" max="6" value="${s.taMultiMax}" data-range="taMultiMax"></div></div>
     <div class="list-item"><div class="name">拼字卡最少张数（${s.taCombineMin}）</div><div class="actions"><input type="range" min="1" max="10" value="${s.taCombineMin}" data-range="taCombineMin"></div></div>
     <div class="list-item"><div class="name">拼字卡最多张数（${s.taCombineMax}）</div><div class="actions"><input type="range" min="1" max="10" value="${s.taCombineMax}" data-range="taCombineMax"></div></div>
+    <div class="list-item"><div class="name">回信概率（${s.letterReplyProb ?? 60}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.letterReplyProb ?? 60}" data-range="letterReplyProb"></div></div>
+    <div class="list-item"><div class="name">回信最快（${s.letterReplyDelayMinH ?? 1}小时）</div><div class="actions"><input type="range" min="1" max="24" value="${s.letterReplyDelayMinH ?? 1}" data-range="letterReplyDelayMinH"></div></div>
+    <div class="list-item"><div class="name">回信最慢（${s.letterReplyDelayMaxD ?? 1}天）</div><div class="actions"><input type="range" min="1" max="30" value="${s.letterReplyDelayMaxD ?? 1}" data-range="letterReplyDelayMaxD"></div></div>
+    <div class="list-item"><div class="name">⚡ 调试模式（3-8秒回信）</div><div class="actions"><input type="checkbox" ${s.letterDebugFast ? "checked" : ""} data-check="letterDebugFast"></div></div>
     <div class="list-item"><div class="name">拍一拍文案库</div><div class="actions"><button data-pokemgr>管理（${state.pokeTexts.length}）</button></div></div>
     <div class="list-item"><div class="name">账号</div><div class="actions"><button class="danger" id="logoutBtn">退出登录</button></div></div>`;
   const logoutBtn = body.querySelector("#logoutBtn");
@@ -3418,6 +3605,12 @@ function renderSettingsPage() {
     inp.addEventListener("input", () => {
       s[inp.dataset.range] = Number(inp.value);
       saveSettings(); renderSettingsPage(); applyAppearance();
+    });
+  });
+  body.querySelectorAll("[data-check]").forEach(inp => {
+    inp.addEventListener("change", () => {
+      s[inp.dataset.check] = inp.checked;
+      saveSettings();
     });
   });
   const bgBtn = body.querySelector("[data-bgimg]");
@@ -3523,6 +3716,7 @@ async function onLoggedIn() {
     if (cloud.pomodoro) state.pomodoro = cloud.pomodoro;
     if (cloud.emojis) state.emojis = cloud.emojis;
     if (cloud.pokeTexts) state.pokeTexts = cloud.pokeTexts;
+    if (cloud.letters) state.letters = cloud.letters;
     store.set("cards", state.cards);
     store.set("messages", state.messages);
     store.set("settings", state.settings);
@@ -3533,6 +3727,7 @@ async function onLoggedIn() {
     store.set("pomodoro", state.pomodoro);
     store.set("emojis", state.emojis);
     store.set("pokeTexts", state.pokeTexts);
+    store.set("letters", state.letters);
   } else {
     await syncToCloud();
   }
