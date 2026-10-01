@@ -27,9 +27,20 @@ window.addEventListener("unhandledrejection", (e) => {
 });
 
 async function syncToCloud() {
-  if (!currentUser) return;
+  if (!currentUser) {
+    console.log("[SYNC] 未登录，跳过");
+    return;
+  }
   try {
-    await supabase.from("user_data").upsert({
+    console.log("[SYNC] 开始上传，数量：", {
+      cards: state.cards.categories.length,
+      messages: state.messages.length,
+      emoji: state.emojis.emoji.length,
+      kaomoji: state.emojis.kaomoji.length,
+      sticker: state.emojis.sticker.length,
+      pokeTexts: state.pokeTexts.length
+    });
+    const { data, error } = await supabase.from("user_data").upsert({
       user_id: currentUser.id,
       cards: state.cards,
       messages: state.messages,
@@ -39,9 +50,19 @@ async function syncToCloud() {
       wishlist: state.wishlist,
       water: state.water,
       pomodoro: state.pomodoro,
-      emojis: state.emojis
+      emojis: state.emojis,
+      pokeTexts: state.pokeTexts
     });
-  } catch (e) { console.warn("同步失败", e); }
+    if (error) {
+      console.error("[SYNC] 上传失败：", error);
+      showLoginError("同步失败：" + error.message);
+    } else {
+      console.log("[SYNC] 上传成功");
+    }
+  } catch (e) {
+    console.error("[SYNC] 异常：", e);
+    showLoginError("同步异常：" + e.message);
+  }
 }
 
 function scheduleSync() {
@@ -52,8 +73,22 @@ function scheduleSync() {
 
 async function loadFromCloud() {
   if (!currentUser) return null;
+  console.log("[LOAD] 开始从云端拉取");
   const { data, error } = await supabase.from("user_data").select("*").eq("user_id", currentUser.id).maybeSingle();
-  if (error) { console.warn(error); return null; }
+  if (error) {
+    console.warn("[LOAD] 失败：", error);
+    return null;
+  }
+  if (data) {
+    console.log("[LOAD] 云端数据：", {
+      hasCards: !!data.cards,
+      hasEmojis: !!data.emojis,
+      stickerCount: data.emojis ? (data.emojis.sticker || []).length : 0,
+      pokeTextsCount: data.pokeTexts ? data.pokeTexts.length : 0
+    });
+  } else {
+    console.log("[LOAD] 云端没有数据（首次登录）");
+  }
   return data;
 }
 
@@ -134,11 +169,19 @@ const state = {
 
 function saveSettings() { store.set("settings", state.settings); scheduleSync(); }
 function saveCards() { store.set("cards", state.cards); scheduleSync(); }
-function savePokeTexts() { store.set("pokeTexts", state.pokeTexts); }
+function savePokeTexts() { store.set("pokeTexts", state.pokeTexts); scheduleSync(); }
 function saveMessages() { store.set("messages", state.messages); scheduleSync(); }
 function saveFavMine() { store.set("favoritesMine", state.favoritesMine); }
 function saveFavTa() { store.set("favoritesTa", state.favoritesTa); }
-function saveEmojis() { store.set("emojis", state.emojis); scheduleSync(); }
+function saveEmojis() {
+  store.set("emojis", state.emojis);
+  console.log("[SAVE] 表情已存本地，准备上传，数量：", {
+    emoji: state.emojis.emoji.length,
+    kaomoji: state.emojis.kaomoji.length,
+    sticker: state.emojis.sticker.length
+  });
+  scheduleSync();
+}
 function saveMoments() { store.set("moments", state.moments); scheduleSync(); }
 function saveWater() { store.set("water", state.water); scheduleSync(); }
 function saveTodos() { store.set("todos", state.todos); scheduleSync(); }
@@ -3436,6 +3479,7 @@ async function onLoggedIn() {
     if (cloud.water) state.water = cloud.water;
     if (cloud.pomodoro) state.pomodoro = cloud.pomodoro;
     if (cloud.emojis) state.emojis = cloud.emojis;
+    if (cloud.pokeTexts) state.pokeTexts = cloud.pokeTexts;
     store.set("cards", state.cards);
     store.set("messages", state.messages);
     store.set("settings", state.settings);
@@ -3445,6 +3489,7 @@ async function onLoggedIn() {
     store.set("water", state.water);
     store.set("pomodoro", state.pomodoro);
     store.set("emojis", state.emojis);
+    store.set("pokeTexts", state.pokeTexts);
   } else {
     await syncToCloud();
   }
