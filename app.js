@@ -416,18 +416,42 @@ function applyChatBackground() {
     body.style.backgroundColor = state.settings.bgColor;
   }
 }
-function renderMessages() {
+let renderLimit = 60;   // 默认只渲染最近 60 条
+
+function renderMessages(resetLimit) {
   const body = document.getElementById("chatBody");
+  if (resetLimit) renderLimit = 60;
   body.innerHTML = "";
   if (state.messages.length === 0) {
     const sys = document.createElement("div");
     sys.className = "system";
     sys.innerHTML = `<span>发消息即可随机抽字卡</span>`;
     body.appendChild(sys);
+    return;
   }
-  state.messages.forEach(m => renderMessage(body, m));
 
-  const lastTa = [...state.messages].reverse().find(m => m.from === "ta" && m.type !== "system" && m.type !== "poke");
+  // 只渲染最后 renderLimit 条
+  const total = state.messages.length;
+  const start = Math.max(0, total - renderLimit);
+  const slice = state.messages.slice(start);
+
+  // 顶部加"加载更早"按钮
+  if (start > 0) {
+    const more = document.createElement("div");
+    more.style.cssText = "text-align:center;padding:12px;color:#576b95;font-size:13px;cursor:pointer;";
+    more.textContent = `↑ 加载更早的 ${Math.min(60, start)} 条消息`;
+    more.addEventListener("click", () => {
+      renderLimit += 60;
+      renderMessages();
+      // 保持滚动位置
+      body.scrollTop = body.scrollHeight - body.clientHeight;
+    });
+    body.appendChild(more);
+  }
+
+  slice.forEach(m => renderMessage(body, m));
+
+  const lastTa = [...slice].reverse().find(m => m.from === "ta" && m.type !== "system" && m.type !== "poke");
   if (lastTa) {
     const wrapper = document.getElementById("msg-" + lastTa.id);
     if (wrapper) {
@@ -709,7 +733,14 @@ function sendMessage(text, opts = {}) {
   state.messages.push(msg);
   saveMessages();
   currentQuote = null; updateQuoteBar();
-  renderMessages();
+
+  // 追加式渲染：只画这一条，不重绘全部
+  const body = document.getElementById("chatBody");
+  // 如果之前显示的是"空提示"，先清掉
+  const emptyTip = body.querySelector(".system");
+  if (emptyTip && state.messages.length === 1) body.innerHTML = "";
+  renderMessage(body, msg);
+  body.scrollTop = body.scrollHeight;
 
   // 查岗触发
   if (text && typeof text === "string" && /你在干什么/.test(text)) {
@@ -718,11 +749,11 @@ function sendMessage(text, opts = {}) {
       const picked = pick(checkinCat.cards.map(c => c.text).filter(Boolean));
       if (picked) {
         setTimeout(() => {
-          const body = document.getElementById("chatBody");
+          const body2 = document.getElementById("chatBody");
           const typing = document.createElement("div");
           typing.className = "typing"; typing.textContent = "对方正在输入…";
-          body.appendChild(typing);
-          body.scrollTop = body.scrollHeight;
+          body2.appendChild(typing);
+          body2.scrollTop = body2.scrollHeight;
           setTimeout(() => {
             typing.remove();
             const moodP = state.settings.moodProb || 0;
@@ -956,7 +987,10 @@ function addBotMessage(text, opts = {}) {
   saveMessages();
   const chatScreen = document.getElementById("chatApp");
   if (chatScreen && chatScreen.classList.contains("active")) {
-    renderMessages();
+    // 追加式渲染：只画这一条，不重绘全部
+    const body = document.getElementById("chatBody");
+    renderMessage(body, msg);
+    body.scrollTop = body.scrollHeight;
   }
   showNotification(msg);
 
@@ -967,7 +1001,16 @@ function addBotMessage(text, opts = {}) {
       msg.recalled = true;
       saveMessages();
       const cs = document.getElementById("chatApp");
-      if (cs && cs.classList.contains("active")) renderMessages();
+      if (cs && cs.classList.contains("active")) {
+        // 撤回只改这一条，不重绘
+        const wrapper = document.getElementById("msg-" + msg.id);
+        if (wrapper) {
+          wrapper.remove();
+          const body2 = document.getElementById("chatBody");
+          renderMessage(body2, msg);
+          body2.scrollTop = body2.scrollHeight;
+        }
+      }
     }, 1500 + Math.random() * 2000);
   }
 }
