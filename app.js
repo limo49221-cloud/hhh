@@ -110,6 +110,7 @@ const DEFAULT_SETTINGS = {
   myName: "我", taName: "TA",
   myAvatar: "", taAvatar: "",
   bgColor: "#ededed", bgImage: "",
+  iconColor: "#000000",
   myBubbleColor: "#95ec69", taBubbleColor: "#ffffff",
   fontSize: 17,
   replyDelayMin: 1, replyDelayMax: 3,
@@ -336,7 +337,7 @@ function renderDesktop() {
       item.className = "desktop-item";
       item.dataset.action = ic.action;
       item.innerHTML = `
-        <div class="desktop-icon" style="position:relative;">${ic.icon && ic.icon.startsWith("data:") ? `<img src="${ic.icon}">` : esc(ic.icon || "📱")}<span class="badge" data-badge="${ic.action}"></span></div>
+        <div class="desktop-icon" style="position:relative;">${ic.icon && ic.icon.startsWith("data:") ? `<img src="${ic.icon}">` : `<i data-lucide="${(window.ICON_MAP && window.ICON_MAP[ic.action]) || 'circle'}"></i>`}<span class="badge" data-badge="${ic.action}"></span></div>
         <div class="desktop-name">${esc(ic.name)}</div>`;
       item.addEventListener("click", () => {
         const map = {
@@ -361,6 +362,7 @@ function renderDesktop() {
     const idx = Math.round(pagesEl.scrollLeft / pagesEl.clientWidth);
     dotsEl.querySelectorAll(".dot").forEach((d, i) => d.classList.toggle("active", i === idx));
   };
+  if (window.__icons) window.__icons.refreshIcons();
 }
 
 function tickDesktopTime() {
@@ -3611,6 +3613,7 @@ function renderSettingsPage() {
     <div class="list-item"><div class="name">对方头像</div><div class="actions">${s.taAvatar ? `<img src="${s.taAvatar}" style="width:32px;height:32px;border-radius:4px;object-fit:cover;margin-right:6px;">` : ""}<button data-avatar="taAvatar">${s.taAvatar ? "更换" : "上传"}</button>${s.taAvatar ? `<button class="danger" data-avclear="taAvatar">清除</button>` : ""}</div></div>
     <div class="list-item"><div class="name">聊天背景色</div><div class="actions"><input type="color" value="${s.bgColor}" data-color="bgColor"></div></div>
     <div class="list-item"><div class="name">聊天背景图</div><div class="actions"><button data-bgimg>上传</button>${s.bgImage ? `<button class="danger" data-bgclear>清除</button>` : ""}</div></div>
+    <div class="list-item"><div class="name">图标颜色</div><div class="actions"><input type="color" value="${s.iconColor || '#000000'}" data-color="iconColor" data-icon-color></div></div>
     <div class="list-item"><div class="name">我的气泡颜色</div><div class="actions"><input type="color" value="${s.myBubbleColor}" data-color="myBubbleColor"></div></div>
     <div class="list-item"><div class="name">对方气泡颜色</div><div class="actions"><input type="color" value="${s.taBubbleColor}" data-color="taBubbleColor"></div></div>
     <div class="list-item"><div class="name">字体大小（${s.fontSize}px）</div><div class="actions"><input type="range" min="12" max="22" value="${s.fontSize}" data-range="fontSize"></div></div>
@@ -3745,6 +3748,7 @@ function applyAppearance() {
   document.documentElement.style.setProperty("--me-bubble", state.settings.myBubbleColor);
   document.documentElement.style.setProperty("--ta-bubble", state.settings.taBubbleColor);
   applyChatBackground();
+  document.documentElement.style.setProperty("--icon-color", state.settings.iconColor || "#000000");
 }
 
 /* ========== 登录 ========== */

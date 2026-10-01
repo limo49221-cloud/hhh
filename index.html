@@ -40,24 +40,23 @@
 
 <div id="chatApp" class="screen">
   <div class="chat-nav">
-    <button class="nav-back" data-back>‹</button>
+    <button class="nav-back" data-back data-icon="ui-back"></button>
     <div class="nav-title" id="chatTitle">TA</div>
-    <button class="nav-menu" id="chatMenuBtn">⋯</button>
+    <button class="nav-menu" id="chatMenuBtn" data-icon="ui-menu"></button>
   </div>
   <div class="chat-body" id="chatBody"></div>
   <div class="chat-inputbar">
-    <button class="input-btn" id="voiceBtn">🎤</button>
-    <input id="chatInput" placeholder="" autocomplete="off">
-    <button class="input-btn" id="imgBtn">🖼️</button>
-    <button class="input-btn" id="emojiBtn">😊</button>
-    <button class="send-btn" id="sendBtn" disabled>发送</button>
+    <button class="input-btn" id="voiceBtn" data-icon="ui-mic"></button>
+<input id="chatInput" placeholder="" autocomplete="off">
+<button class="input-btn" id="imgBtn" data-icon="ui-image"></button>
+<button class="input-btn" id="emojiBtn" data-icon="ui-smile"></button>
   </div>
   <input type="file" id="imgFile" accept="image/*" hidden>
 </div>
 
 <div id="cardsApp" class="screen">
   <div class="chat-nav">
-    <button class="nav-back" data-back>‹</button>
+    <button class="nav-back" data-back data-icon="ui-back"></button>
     <div class="nav-title">字卡管理</div>
     <button class="nav-menu" id="newCatBtn" style="right:70px;">+ 分类</button>
     <button class="nav-menu" id="batchToggleBtn">批量</button>
@@ -77,7 +76,7 @@
 
 <div id="emojisApp" class="screen">
   <div class="chat-nav">
-    <button class="nav-back" data-back>‹</button>
+    <button class="nav-back" data-back data-icon="ui-back"></button>
     <div class="nav-title">表情库</div>
   </div>
   <div class="page-body" id="emojisBody"></div>
@@ -85,7 +84,7 @@
 
 <div id="paperApp" class="screen">
   <div class="chat-nav">
-    <button class="nav-back" data-back>‹</button>
+    <button class="nav-back" data-back data-icon="ui-back"></button>
     <div class="nav-title">论文摘要</div>
   </div>
   <div class="page-body" id="paperBody"></div>
@@ -93,7 +92,7 @@
 
 <div id="tarotApp" class="screen">
   <div class="chat-nav">
-    <button class="nav-back" data-back>‹</button>
+    <button class="nav-back" data-back data-icon="ui-back"></button>
     <div class="nav-title">塔罗</div>
   </div>
   <div class="page-body" id="tarotBody"></div>
@@ -101,7 +100,7 @@
 
 <div id="momentsApp" class="screen">
   <div class="chat-nav">
-    <button class="nav-back" data-back>‹</button>
+    <button class="nav-back" data-back data-icon="ui-back"></button>
     <div class="nav-title">朋友圈</div>
     <button class="nav-menu" id="momentsClearBtn" style="right:90px;color:#fa5151;">清空</button>
     <button class="nav-menu" id="momentsNewBtn">+ 发动态</button>
@@ -111,7 +110,7 @@
 
 <div id="choiceApp" class="screen">
   <div class="chat-nav">
-    <button class="nav-back" data-back>‹</button>
+    <button class="nav-back" data-back data-icon="ui-back"></button>
     <div class="nav-title">抉择</div>
   </div>
   <div class="page-body" id="choiceBody"></div>
@@ -119,7 +118,7 @@
 
 <div id="surveyApp" class="screen">
   <div class="chat-nav">
-    <button class="nav-back" data-back>‹</button>
+    <button class="nav-back" data-back data-icon="ui-back"></button>
     <div class="nav-title">问卷</div>
   </div>
   <div class="page-body" id="surveyBody"></div>
@@ -127,7 +126,7 @@
 
 <div id="lettersApp" class="screen">
   <div class="chat-nav">
-    <button class="nav-back" data-back>‹</button>
+    <button class="nav-back" data-back data-icon="ui-back"></button>
     <div class="nav-title">信件</div>
     <button class="nav-menu" id="lettersNewBtn" onclick="openWriteLetter()">+ 写信</button>
   </div>
@@ -136,7 +135,7 @@
 
 <div id="shoppingApp" class="screen">
   <div class="chat-nav">
-    <button class="nav-back" data-back>‹</button>
+    <button class="nav-back" data-back data-icon="ui-back"></button>
     <div class="nav-title">购物</div>
     <button class="nav-menu" id="shoppingAddBtn">+ 添加</button>
   </div>
@@ -145,7 +144,7 @@
 
 <div id="waterApp" class="screen">
   <div class="chat-nav">
-    <button class="nav-back" data-back>‹</button>
+    <button class="nav-back" data-back data-icon="ui-back"></button>
     <div class="nav-title">日常</div>
   </div>
   <div class="page-body" id="waterBody"></div>
@@ -153,7 +152,7 @@
 
 <div id="eatApp" class="screen">
   <div class="chat-nav">
-    <button class="nav-back" data-back>‹</button>
+    <button class="nav-back" data-back data-icon="ui-back"></button>
     <div class="nav-title">吃什么</div>
   </div>
   <div class="page-body" id="eatBody"></div>
@@ -161,7 +160,7 @@
 
 <div id="checkinApp" class="screen">
   <div class="chat-nav">
-    <button class="nav-back" data-back>‹</button>
+    <button class="nav-back" data-back data-icon="ui-back"></button>
     <div class="nav-title">查岗</div>
   </div>
   <div class="page-body" id="checkinBody"></div>
@@ -169,7 +168,7 @@
 
 <div id="pomodoroApp" class="screen">
   <div class="chat-nav">
-    <button class="nav-back" data-back>‹</button>
+    <button class="nav-back" data-back data-icon="ui-back"></button>
     <div class="nav-title">番茄钟</div>
   </div>
   <div class="page-body" id="pomodoroBody"></div>
@@ -177,7 +176,7 @@
 
 <div id="musicApp" class="screen">
   <div class="chat-nav">
-    <button class="nav-back" data-back>‹</button>
+    <button class="nav-back" data-back data-icon="ui-back"></button>
     <div class="nav-title">音乐</div>
     <button class="nav-menu" id="musicAddBtn">+ 添加</button>
   </div>
@@ -186,7 +185,7 @@
 
 <div id="booksApp" class="screen">
   <div class="chat-nav">
-    <button class="nav-back" data-back>‹</button>
+    <button class="nav-back" data-back data-icon="ui-back"></button>
     <div class="nav-title">推书</div>
   </div>
   <div class="page-body" id="booksBody"></div>
@@ -194,7 +193,7 @@
 
 <div id="searchApp" class="screen">
   <div class="chat-nav">
-    <button class="nav-back" data-back>‹</button>
+    <button class="nav-back" data-back data-icon="ui-back"></button>
     <div class="nav-title">搜索</div>
   </div>
   <div class="page-body" id="searchBody"></div>
@@ -202,7 +201,7 @@
 
 <div id="settingsApp" class="screen">
   <div class="chat-nav">
-    <button class="nav-back" data-back>‹</button>
+    <button class="nav-back" data-back data-icon="ui-back"></button>
     <div class="nav-title">设置</div>
   </div>
   <div class="page-body" id="settingsBody"></div>
@@ -267,7 +266,11 @@
   </div>
 </div>
 
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.js"></script>
+<script src="icons.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
