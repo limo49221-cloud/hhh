@@ -3967,6 +3967,15 @@ function renderSettingsPoke(body) {
 
   body.appendChild(wrap);
 }
+function applyAppearance() {
+  document.documentElement.style.fontSize = state.settings.fontSize + "px";
+  document.querySelectorAll(".msg-row.me .bubble").forEach(b => b.style.background = state.settings.myBubbleColor);
+  document.querySelectorAll(".msg-row.bot .bubble").forEach(b => b.style.background = state.settings.taBubbleColor);
+  document.documentElement.style.setProperty("--me-bubble", state.settings.myBubbleColor);
+  document.documentElement.style.setProperty("--ta-bubble", state.settings.taBubbleColor);
+  applyChatBackground();
+  document.documentElement.style.setProperty("--icon-color", state.settings.iconColor || "#000000");
+}
 
 /* ========== 登录 ========== */
 function showLoginMsg(msg) {
