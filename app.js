@@ -1063,13 +1063,13 @@ function initInputBar() {
     if (!v) return;
     input.value = ""; send.disabled = true; sendMessage(v);
   });
-  const pokeBtn = document.createElement("button");
-  pokeBtn.className = "input-btn";
-  pokeBtn.textContent = "💡";
-  const imgBtnEl = document.getElementById("imgBtn");
-  imgBtnEl.parentNode.insertBefore(pokeBtn, imgBtnEl);
-  pokeBtn.addEventListener("click", () => doPoke());
-  document.getElementById("imgBtn").addEventListener("click", () => document.getElementById("imgFile").click());
+
+  // 更多按钮：打开底部面板
+  document.getElementById("moreBtn").addEventListener("click", () => {
+    openChatMorePanel();
+  });
+
+  // 图片上传
   document.getElementById("imgFile").addEventListener("change", async () => {
     const f = document.getElementById("imgFile").files[0];
     if (!f) return;
@@ -1077,86 +1077,8 @@ function initInputBar() {
     sendMessage("", { image: data });
     document.getElementById("imgFile").value = "";
   });
-  document.getElementById("emojiBtn").addEventListener("click", () => {
-    let pickTab = "emoji";
-    openModal("表情", () => {
-      const wrap = document.createElement("div");
 
-      const tabs = document.createElement("div");
-      tabs.style.cssText = "display:flex;gap:8px;margin-bottom:12px;";
-      const tabDefs = [
-        { key: "emoji",    label: "Emoji" },
-        { key: "kaomoji",  label: "颜文字" },
-        { key: "sticker",  label: "表情包" }
-      ];
-      const tabBtns = [];
-      tabDefs.forEach(t => {
-        const btn = document.createElement("button");
-        btn.className = "btn secondary";
-        btn.style.flex = "1";
-        btn.textContent = t.label;
-        btn.addEventListener("click", () => {
-          pickTab = t.key;
-          updateTabStyle();
-          render();
-        });
-        tabBtns.push(btn);
-        tabs.appendChild(btn);
-      });
-      wrap.appendChild(tabs);
-
-      const manageBtn = document.createElement("button");
-      manageBtn.className = "btn secondary";
-      manageBtn.style.cssText = "width:100%;margin-bottom:12px;font-size:13px;";
-      manageBtn.textContent = "⚙️ 去表情库管理";
-      manageBtn.addEventListener("click", () => {
-        modal.classList.remove("open");
-        openEmojiManager();
-      });
-      wrap.appendChild(manageBtn);
-
-      const list = document.createElement("div");
-      wrap.appendChild(list);
-
-      function updateTabStyle() {
-        tabBtns.forEach((b, i) => {
-          const on = tabDefs[i].key === pickTab;
-          b.className = "btn" + (on ? "" : " secondary");
-        });
-      }
-
-      function render() {
-        list.innerHTML = "";
-        const arr = state.emojis[pickTab] || [];
-        if (!arr.length) {
-          list.innerHTML = `<div class="empty">还没有内容，去表情库添加吧</div>`;
-          return;
-        }
-        arr.forEach((e) => {
-          const item = document.createElement("div");
-          item.className = "list-item";
-          const isImg = e.startsWith("data:");
-          item.innerHTML = `<div class="name" style="font-size:${isImg ? "0" : "22px"};cursor:pointer;">${isImg ? `<img src="${e}" style="width:48px;height:48px;object-fit:cover;border-radius:6px;">` : esc(e)}</div><div class="actions"><button data-send>发送</button></div>`;
-          item.querySelector("[data-send]").addEventListener("click", () => {
-            if (isImg) sendMessage("", { image: e });
-            else sendMessage(e);
-            modal.classList.remove("open");
-          });
-          const nameEl = item.querySelector(".name");
-          nameEl.addEventListener("click", () => {
-            if (isImg) sendMessage("", { image: e });
-            else sendMessage(e);
-            modal.classList.remove("open");
-          });
-          list.appendChild(item);
-        });
-      }
-
-      updateTabStyle();
-      render();
-      return wrap;
-    });
-  });
+  // 语音按钮
   document.getElementById("voiceBtn").addEventListener("click", () => {
     openModal("发送语音", () => {
       const wrap = document.createElement("div");
@@ -1171,22 +1093,142 @@ function initInputBar() {
       return wrap;
     });
   });
+
+  if (window.__icons) {
+    window.__icons.renderUiIcons();
+    window.__icons.refreshIcons();
+  }
+}
+/* ===== 聊天更多面板 ===== */
+function openChatMorePanel() {
+  const panel = document.getElementById("chatMorePanel");
+  const grid = document.getElementById("chatMoreGrid");
+  if (!panel || !grid) return;
+
+  // 功能定义：以后加功能，往这里加一项就行
+  const items = [
+    { icon: "hand",   label: "拍一拍",   fn: () => { closeChatMorePanel(); doPoke(); } },
+    { icon: "image",  label: "图片",     fn: () => { closeChatMorePanel(); document.getElementById("imgFile").click(); } },
+    { icon: "smile",  label: "表情包",   fn: () => { closeChatMorePanel(); openEmojiPicker(); } },
+    { icon: "phone",  label: "模拟通话", fn: () => { closeChatMorePanel(); doCall(); } },
+    { icon: "star",   label: "收藏",     fn: () => { closeChatMorePanel(); showFavorites(); } },
+    { icon: "search", label: "搜索记录", fn: () => { closeChatMorePanel(); doSearch(); } }
+  ];
+
+  grid.innerHTML = "";
+  items.forEach(it => {
+    const btn = document.createElement("button");
+    btn.className = "chat-more-item";
+    btn.innerHTML = `<i data-lucide="${it.icon}"></i><span>${it.label}</span>`;
+    btn.addEventListener("click", it.fn);
+    grid.appendChild(btn);
+  });
+
+  panel.style.display = "flex";
+  if (window.__icons) window.__icons.refreshIcons();
+
+  setTimeout(() => {
+    document.addEventListener("click", outsideCloseHandler);
+  }, 0);
+}
+
+function closeChatMorePanel() {
+  const panel = document.getElementById("chatMorePanel");
+  if (panel) panel.style.display = "none";
+  document.removeEventListener("click", outsideCloseHandler);
+}
+
+function outsideCloseHandler(e) {
+  const panel = document.getElementById("chatMorePanel");
+  if (!panel) return;
+  if (panel.contains(e.target)) return;
+  if (e.target.closest("#moreBtn")) return;
+  closeChatMorePanel();
+}
+
+/* ===== 表情选择器（从面板里调） ===== */
+function openEmojiPicker() {
+  let pickTab = "emoji";
+  openModal("表情", () => {
+    const wrap = document.createElement("div");
+
+    const tabs = document.createElement("div");
+    tabs.style.cssText = "display:flex;gap:8px;margin-bottom:12px;";
+    const tabDefs = [
+      { key: "emoji",    label: "Emoji" },
+      { key: "kaomoji",  label: "颜文字" },
+      { key: "sticker",  label: "表情包" }
+    ];
+    const tabBtns = [];
+    tabDefs.forEach(t => {
+      const btn = document.createElement("button");
+      btn.className = "btn secondary";
+      btn.style.flex = "1";
+      btn.textContent = t.label;
+      btn.addEventListener("click", () => {
+        pickTab = t.key;
+        updateTabStyle();
+        render();
+      });
+      tabBtns.push(btn);
+      tabs.appendChild(btn);
+    });
+    wrap.appendChild(tabs);
+
+    const manageBtn = document.createElement("button");
+    manageBtn.className = "btn secondary";
+    manageBtn.style.cssText = "width:100%;margin-bottom:12px;font-size:13px;";
+    manageBtn.textContent = "⚙️ 去表情库管理";
+    manageBtn.addEventListener("click", () => {
+      modal.classList.remove("open");
+      openEmojiManager();
+    });
+    wrap.appendChild(manageBtn);
+
+    const list = document.createElement("div");
+    wrap.appendChild(list);
+
+    function updateTabStyle() {
+      tabBtns.forEach((b, i) => {
+        const on = tabDefs[i].key === pickTab;
+        b.className = "btn" + (on ? "" : " secondary");
+      });
+    }
+
+    function render() {
+      list.innerHTML = "";
+      const arr = state.emojis[pickTab] || [];
+      if (!arr.length) {
+        list.innerHTML = `<div class="empty">还没有内容，去表情库添加吧</div>`;
+        return;
+      }
+      arr.forEach((e) => {
+        const item = document.createElement("div");
+        item.className = "list-item";
+        const isImg = e.startsWith("data:");
+        item.innerHTML = `<div class="name" style="font-size:${isImg ? "0" : "22px"};cursor:pointer;">${isImg ? `<img src="${e}" style="width:48px;height:48px;object-fit:cover;border-radius:6px;">` : esc(e)}</div><div class="actions"><button data-send>发送</button></div>`;
+        item.querySelector("[data-send]").addEventListener("click", () => {
+          if (isImg) sendMessage("", { image: e });
+          else sendMessage(e);
+          modal.classList.remove("open");
+        });
+        const nameEl = item.querySelector(".name");
+        nameEl.addEventListener("click", () => {
+          if (isImg) sendMessage("", { image: e });
+          else sendMessage(e);
+          modal.classList.remove("open");
+        });
+        list.appendChild(item);
+      });
+    }
+
+    updateTabStyle();
+    render();
+    return wrap;
+  });
 }
 document.getElementById("chatMenuBtn").addEventListener("click", () => {
-  document.getElementById("chatMenuModal").classList.add("open");
-});
-document.getElementById("chatMenuClose").addEventListener("click", () => {
-  document.getElementById("chatMenuModal").classList.remove("open");
-});
-document.querySelectorAll("#chatMenuModal .menu-item").forEach(item => {
-  item.addEventListener("click", () => {
-    const action = item.dataset.action;
-    document.getElementById("chatMenuModal").classList.remove("open");
-    if (action === "search") doSearch();
-    if (action === "fav") showFavorites();
-    if (action === "poke") doPoke();
-    if (action === "call") doCall();
-  });
+  openSettings();
 });
 function doSearch() {
   openModal("搜索聊天记录", () => {
@@ -3833,8 +3875,6 @@ function init() {
     if (chat && chat.classList.contains("active")) updateTaTimeDisplay();
   }, 10 * 1000);
   initInputBar();
-  const pokeMenuItem = document.querySelector('#chatMenuModal .menu-item[data-action="poke"]');
-  if (pokeMenuItem) pokeMenuItem.remove();
   applyAppearance();
   document.querySelectorAll(".dock-item").forEach(el => {
     el.addEventListener("click", () => {

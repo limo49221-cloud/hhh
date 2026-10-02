@@ -28,7 +28,13 @@ window.UI_ICON_MAP = {
   "ui-menu":  "more-horizontal",
   "ui-mic":   "mic",
   "ui-image": "image",
-  "ui-smile": "smile"
+  "ui-smile": "smile",
+  "ui-poke":  "hand",
+  "ui-plus":  "plus-circle",
+  "ui-settings": "settings",
+  "ui-call":     "phone",
+  "ui-fav":      "star",
+  "ui-search":   "search"
 };
 
 // 图标颜色（默认黑）

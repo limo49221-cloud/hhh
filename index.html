@@ -42,17 +42,19 @@
   <div class="chat-nav">
     <button class="nav-back" data-back data-icon="ui-back"></button>
     <div class="nav-title" id="chatTitle">TA</div>
-    <button class="nav-menu" id="chatMenuBtn" data-icon="ui-menu"></button>
+    <button class="nav-menu" id="chatMenuBtn" data-icon="ui-settings"></button>
   </div>
   <div class="chat-body" id="chatBody"></div>
   <div class="chat-inputbar">
     <button class="input-btn" id="voiceBtn" data-icon="ui-mic"></button>
     <input id="chatInput" placeholder="" autocomplete="off">
-    <button class="input-btn" id="imgBtn" data-icon="ui-image"></button>
-    <button class="input-btn" id="emojiBtn" data-icon="ui-smile"></button>
+    <button class="input-btn" id="moreBtn" data-icon="ui-plus"></button>
     <button class="send-btn" id="sendBtn" disabled>发送</button>
   </div>
   <input type="file" id="imgFile" accept="image/*" hidden>
+  <div class="chat-more-panel" id="chatMorePanel" style="display:none;">
+    <div class="chat-more-grid" id="chatMoreGrid"></div>
+  </div>
 </div>
 
 <div id="cardsApp" class="screen">
@@ -249,21 +251,6 @@
       <button id="modalClose">✕</button>
     </div>
     <div class="modal-body" id="modalBody"></div>
-  </div>
-</div>
-
-<div class="modal" id="chatMenuModal">
-  <div class="modal-panel">
-    <div class="modal-head">
-      <span>聊天功能</span>
-      <button id="chatMenuClose">✕</button>
-    </div>
-    <div class="modal-body">
-      <div class="menu-item" data-action="search">🔍 搜索聊天记录</div>
-      <div class="menu-item" data-action="fav">⭐ 收藏</div>
-      <div class="menu-item" data-action="poke">👉 拍一拍</div>
-      <div class="menu-item" data-action="call">📞 模拟通话</div>
-    </div>
   </div>
 </div>
 

@@ -1086,3 +1086,54 @@ html, body {
   color: var(--icon-color, #000);
   stroke-width: 2;
 }
+/* ===== 聊天更多面板 ===== */
+.chat-more-panel {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #f7f7f7;
+  border-top: 0.5px solid #d6d6d6;
+  padding: 16px 12px calc(16px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  z-index: 100;
+  box-shadow: 0 -2px 12px rgba(0,0,0,0.08);
+  animation: slideUp 0.2s ease;
+}
+
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.chat-more-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px 8px;
+}
+
+.chat-more-item {
+  background: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 14px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #333;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+}
+
+.chat-more-item:active { background: #f0f0f0; }
+
+.chat-more-item i[data-lucide],
+.chat-more-item svg {
+  width: 24px;
+  height: 24px;
+  color: var(--icon-color, #000);
+  stroke-width: 2;
+}
