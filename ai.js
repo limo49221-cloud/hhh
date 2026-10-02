@@ -11,7 +11,13 @@ window.AI_MODE = {
   endpoint: "https://api.deepseek.com/chat/completions",
   systemPrompt: "",
   maxHistory: 20,          // 带多少条历史给 AI
-  temperature: 0.9
+  temperature: 0.9,
+  useAI: {
+    chat:    true,         // 聊天用 AI
+    poke:    false,        // 拍一拍用 AI（默认关）
+    moments: true,         // 朋友圈用 AI
+    letters: true          // 信件用 AI
+  }
 };
 
 // 从 localStorage 读配置

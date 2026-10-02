@@ -518,8 +518,13 @@ function renderMessage(body, m) {
         }, 1500);
       } else if (roll < state.settings.pokeBackProb + state.settings.pokeCardProb) {
         setTimeout(() => {
-          const card = drawCard();
-          if (card) addBotMessage(card, { isCard: true, mood: drawMood(), intent: drawIntent() });
+          if (window.AI_MODE && window.AI_MODE.enabled && window.AI_MODE.useAI && window.AI_MODE.useAI.poke) {
+            // AI 模式：让 AI 回应拍一拍
+            addBotMessageAI("（你拍了拍" + state.settings.taName + "，请用一句简短的话回应，不要解释）");
+          } else {
+            const card = drawCard();
+            if (card) addBotMessage(card, { isCard: true, mood: drawMood(), intent: drawIntent() });
+          }
         }, 1500);
       }
     });
@@ -896,7 +901,7 @@ function taReply() {
   if (Math.random() * 100 < state.settings.readNoReplyProb) return;
 
   // ★ AI 模式：走 AI，不走字卡
-  if (window.AI_MODE && window.AI_MODE.enabled) {
+  if (window.AI_MODE && window.AI_MODE.enabled && window.AI_MODE.useAI && window.AI_MODE.useAI.chat) {
     return taReplyAI();
   }
 
@@ -966,6 +971,16 @@ function taReply() {
 }
 
 /* ===== AI 模式的回复 ===== */
+function addBotMessageAI(prompt) {
+  window.__ai.askAI(prompt).then(reply => {
+    if (!reply) {
+      const card = drawCard();
+      if (card) addBotMessage(card, { isCard: true });
+      return;
+    }
+    addBotMessage(reply, { isCard: false });
+  });
+}
 function taReplyAI() {
   const body = document.getElementById("chatBody");
 
@@ -2504,6 +2519,21 @@ function taPostMoment() {
 
 function taCommentMoment(moment) {
   if (Math.random() * 100 < state.settings.taCommentProb) {
+    if (window.AI_MODE && window.AI_MODE.enabled && window.AI_MODE.useAI && window.AI_MODE.useAI.moments) {
+      // AI 模式：让 AI 评论这条动态
+      const prompt = `我在朋友圈发了一条动态："${moment.text}"，请你以我的恋人口吻评论一句（15字以内，口语化，不要解释）`;
+      window.__ai.askAI(prompt).then(reply => {
+        if (!reply) return;
+        if (!moment.comments) moment.comments = [];
+        moment.comments.push({ id: uid(), from: "ta", text: reply, time: fmtFull(nowBeijing()) });
+        saveMoments();
+        const mScreen = document.getElementById("momentsApp");
+        if (mScreen && mScreen.classList.contains("active")) renderMoments();
+        updateBadges();
+        toast(`${state.settings.taName} 评论了你的动态`);
+      });
+      return;
+    }
     const card = drawCard();
     if (!card) return;
     if (!moment.comments) moment.comments = [];
@@ -2517,6 +2547,20 @@ function taCommentMoment(moment) {
 }
 function taReplyToMyComment(moment, myCommentText) {
   if (Math.random() * 100 >= state.settings.taReplyCommentProb) return;
+  if (window.AI_MODE && window.AI_MODE.enabled && window.AI_MODE.useAI && window.AI_MODE.useAI.moments) {
+    const prompt = `我在朋友圈评论了你："${myCommentText}"，请以我的恋人口吻回一句（15字以内，口语化，不要解释）`;
+    window.__ai.askAI(prompt).then(reply => {
+      if (!reply) return;
+      if (!moment.comments) moment.comments = [];
+      moment.comments.push({ id: uid(), from: "ta", text: reply, time: fmtFull(nowBeijing()) });
+      saveMoments();
+      const mScreen = document.getElementById("momentsApp");
+      if (mScreen && mScreen.classList.contains("active")) renderMoments();
+      updateBadges();
+      toast(`${state.settings.taName} 回复了你的评论`);
+    });
+    return;
+  }
   const card = drawCard();
   if (!card) return;
   setTimeout(() => {
@@ -3184,6 +3228,38 @@ function openWriteLetter(replyTo) {
 }
 
 function taWriteLetter(replyToSubject) {
+  if (window.AI_MODE && window.AI_MODE.enabled && window.AI_MODE.useAI && window.AI_MODE.useAI.letters) {
+    // AI 模式：让 AI 写一封信
+    const prompt = replyToSubject 
+      ? `我给你写了封信，标题是"${replyToSubject}"，请以我的恋人口吻回一封信（50字以内，像真的写信，不要解释）`
+      : `请以我的恋人口吻给我写一封短信（50字以内，像真的写信，不要解释）`;
+    window.__ai.askAI(prompt).then(reply => {
+      if (!reply) return;
+      const letter = {
+        id: uid(),
+        from: "ta",
+        subject: replyToSubject ? "Re: " + replyToSubject : "写给你",
+        body: reply,
+        image: null,
+        time: fmtFull(nowBeijing()),
+        ts: Date.now(),
+        read: false
+      };
+      state.letters.push(letter);
+      saveLetters();
+      updateBadges();
+      const msg = {
+        id: uid(), from: "ta",
+        text: `【来信】${letter.subject}`,
+        time: fmtTime(nowBeijing()), ts: Date.now()
+      };
+      showNotification(msg);
+      const letterScreen = document.getElementById("lettersApp");
+      if (letterScreen && letterScreen.classList.contains("active")) renderLetters();
+      toast(`${state.settings.taName} 给你写了一封信`);
+    });
+    return;
+  }
   const card = drawCard();
   if (!card) return;
   const letter = {
@@ -4023,6 +4099,22 @@ function renderSettingsAI(body) {
       <div class="actions"><input type="checkbox" id="aiEnabled" ${cfg.enabled ? "checked" : ""}></div>
     </div>
     <div class="list-item">
+      <div class="name">聊天用 AI</div>
+      <div class="actions"><input type="checkbox" id="aiUseChat" ${cfg.useAI && cfg.useAI.chat ? "checked" : ""}></div>
+    </div>
+    <div class="list-item">
+      <div class="name">拍一拍用 AI</div>
+      <div class="actions"><input type="checkbox" id="aiUsePoke" ${cfg.useAI && cfg.useAI.poke ? "checked" : ""}></div>
+    </div>
+    <div class="list-item">
+      <div class="name">朋友圈用 AI</div>
+      <div class="actions"><input type="checkbox" id="aiUseMoments" ${cfg.useAI && cfg.useAI.moments ? "checked" : ""}></div>
+    </div>
+    <div class="list-item">
+      <div class="name">信件用 AI</div>
+      <div class="actions"><input type="checkbox" id="aiUseLetters" ${cfg.useAI && cfg.useAI.letters ? "checked" : ""}></div>
+    </div>
+    <div class="list-item">
       <div class="name">服务商</div>
       <div class="actions">
         <select id="aiProvider" class="input" style="width:auto;">
@@ -4076,6 +4168,12 @@ function renderSettingsAI(body) {
     cfg.endpoint = wrap.querySelector("#aiEndpoint").value.trim();
     cfg.systemPrompt = wrap.querySelector("#aiPrompt").value.trim();
     cfg.temperature = Number(wrap.querySelector("#aiTemp").value) || 0.9;
+    cfg.useAI = {
+      chat:    wrap.querySelector("#aiUseChat").checked,
+      poke:    wrap.querySelector("#aiUsePoke").checked,
+      moments: wrap.querySelector("#aiUseMoments").checked,
+      letters: wrap.querySelector("#aiUseLetters").checked
+    };
     window.__ai.saveAIConfig();
     toast("已保存");
   });
