@@ -726,7 +726,13 @@ function getAllCards() {
   });
   return list;
 }
-function drawCard() { const l = getAllCards(); return l.length ? pick(l) : null; }
+function drawCard() {
+  if (window.DICT_DATA && window.DICT_DATA.length) {
+    return pick(window.DICT_DATA);
+  }
+  const l = getAllCards();
+  return l.length ? pick(l) : null;
+}
 function drawMood() {
   const l = (state.cards.categories.find(c => c.name === "心情") || {}).cards || [];
   return l.length ? pick(l).text : null;
