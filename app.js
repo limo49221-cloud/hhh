@@ -894,6 +894,12 @@ function taCombineCards() {
 function taReply() {
   const body = document.getElementById("chatBody");
   if (Math.random() * 100 < state.settings.readNoReplyProb) return;
+
+  // ★ AI 模式：走 AI，不走字卡
+  if (window.AI_MODE && window.AI_MODE.enabled) {
+    return taReplyAI();
+  }
+
   const typing = document.createElement("div");
   typing.className = "typing"; typing.textContent = "对方正在输入…";
   body.appendChild(typing);
@@ -957,6 +963,36 @@ function taReply() {
       addBotMessage(card, { ...opts, quote });
     }
   }, rand(800, 1800));
+}
+
+/* ===== AI 模式的回复 ===== */
+function taReplyAI() {
+  const body = document.getElementById("chatBody");
+
+  // 取用户最后一条消息
+  const lastUser = [...state.messages].reverse().find(m => m.from === "me" && m.text && !m.recalled);
+  const userText = lastUser ? lastUser.text : "";
+
+  // 显示"正在输入"
+  const typing = document.createElement("div");
+  typing.className = "typing";
+  typing.textContent = "对方正在输入…";
+  body.appendChild(typing);
+  body.scrollTop = body.scrollHeight;
+
+  window.__ai.askAI(userText).then(reply => {
+    typing.remove();
+
+    if (!reply) {
+      // AI 没返回，回退到字卡
+      console.warn("[AI] 无回复，回退字卡");
+      const card = drawCard();
+      if (card) addBotMessage(card, { isCard: true });
+      return;
+    }
+
+    addBotMessage(reply, { isCard: false });
+  });
 }
 function taMultiReply() {
   const min = Math.max(2, Math.floor(state.settings.taMultiMin || 2));
@@ -3668,7 +3704,8 @@ function renderSettingsPage() {
     profile: "个人资料",
     appearance: "外观",
     probability: "概率设置",
-    poke: "拍一拍文案库"
+    poke: "拍一拍文案库",
+    ai: "AI 模式"
   };
   if (titleEl) titleEl.textContent = titles[settingsPage] || "设置";
 
@@ -3694,6 +3731,7 @@ function renderSettingsPage() {
   if (settingsPage === "appearance")   return renderSettingsAppearance(body);
   if (settingsPage === "probability")  return renderSettingsProbability(body);
   if (settingsPage === "poke")         return renderSettingsPoke(body);
+  if (settingsPage === "ai")           return renderSettingsAI(body); 
 }
 
 /* ---- 设置主页 ---- */
@@ -3702,7 +3740,8 @@ function renderSettingsMain(body) {
     { icon: "user",                label: "个人资料",     page: "profile" },
     { icon: "palette",             label: "外观",         page: "appearance" },
     { icon: "sliders-horizontal",  label: "概率设置",     page: "probability" },
-    { icon: "hand",                label: "拍一拍文案库", page: "poke" }
+    { icon: "hand",                label: "拍一拍文案库", page: "poke" },
+    { icon: "bot",                 label: "AI 模式",      page: "ai" }
   ];
 
   const list = document.createElement("div");
@@ -3972,6 +4011,81 @@ function renderSettingsPoke(body) {
   });
 
   body.appendChild(wrap);
+}
+/* ---- AI 模式设置 ---- */
+function renderSettingsAI(body) {
+  const cfg = window.AI_MODE;
+
+  const wrap = document.createElement("div");
+  wrap.innerHTML = `
+    <div class="list-item">
+      <div class="name">启用 AI 模式</div>
+      <div class="actions"><input type="checkbox" id="aiEnabled" ${cfg.enabled ? "checked" : ""}></div>
+    </div>
+    <div class="list-item">
+      <div class="name">服务商</div>
+      <div class="actions">
+        <select id="aiProvider" class="input" style="width:auto;">
+          <option value="deepseek" ${cfg.provider === "deepseek" ? "selected" : ""}>DeepSeek</option>
+          <option value="gemini"   ${cfg.provider === "gemini" ? "selected" : ""}>Gemini</option>
+          <option value="custom"   ${cfg.provider === "custom" ? "selected" : ""}>自定义</option>
+        </select>
+      </div>
+    </div>
+    <div class="list-item">
+      <div class="name">API Key</div>
+      <div class="actions"><input class="input" id="aiKey" type="password" value="${cfg.apiKey}" placeholder="sk-..." style="width:180px;"></div>
+    </div>
+    <div class="list-item">
+      <div class="name">模型名</div>
+      <div class="actions"><input class="input" id="aiModel" value="${cfg.model}" style="width:180px;"></div>
+    </div>
+    <div class="list-item">
+      <div class="name">接口地址</div>
+      <div class="actions"><input class="input" id="aiEndpoint" value="${cfg.endpoint}" style="width:180px;"></div>
+    </div>
+    <div class="list-item" style="flex-direction:column;align-items:stretch;">
+      <div class="name" style="margin-bottom:8px;">人设提示词（system prompt）</div>
+      <textarea class="input" id="aiPrompt" style="height:100px;padding:8px;font-family:inherit;resize:vertical;" placeholder="留空则用默认">${cfg.systemPrompt || ""}</textarea>
+    </div>
+    <div class="list-item">
+      <div class="name">温度（0-2）</div>
+      <div class="actions"><input type="range" id="aiTemp" min="0" max="2" step="0.1" value="${cfg.temperature}"></div>
+    </div>
+    <button class="btn" id="aiSaveBtn" style="width:100%;margin-top:12px;">保存</button>
+    <button class="btn secondary" id="aiTestBtn" style="width:100%;margin-top:8px;">测试一下</button>
+  `;
+  body.appendChild(wrap);
+
+  wrap.querySelector("#aiProvider").addEventListener("change", (e) => {
+    const v = e.target.value;
+    const preset = {
+      deepseek: { endpoint: "https://api.deepseek.com/chat/completions", model: "deepseek-chat" },
+      gemini:   { endpoint: "https://generativelanguage.googleapis.com/v1beta", model: "gemini-1.5-flash" },
+      custom:   { endpoint: cfg.endpoint, model: cfg.model }
+    };
+    wrap.querySelector("#aiEndpoint").value = preset[v].endpoint;
+    wrap.querySelector("#aiModel").value = preset[v].model;
+  });
+
+  wrap.querySelector("#aiSaveBtn").addEventListener("click", () => {
+    cfg.enabled = wrap.querySelector("#aiEnabled").checked;
+    cfg.provider = wrap.querySelector("#aiProvider").value;
+    cfg.apiKey = wrap.querySelector("#aiKey").value.trim();
+    cfg.model = wrap.querySelector("#aiModel").value.trim();
+    cfg.endpoint = wrap.querySelector("#aiEndpoint").value.trim();
+    cfg.systemPrompt = wrap.querySelector("#aiPrompt").value.trim();
+    cfg.temperature = Number(wrap.querySelector("#aiTemp").value) || 0.9;
+    window.__ai.saveAIConfig();
+    toast("已保存");
+  });
+
+  wrap.querySelector("#aiTestBtn").addEventListener("click", async () => {
+    toast("测试中…");
+    const r = await window.__ai.askAI("你好");
+    if (r) toast("AI 回复：" + r.slice(0, 20));
+    else toast("失败，检查 Key 和网络");
+  });
 }
 function applyAppearance() {
   document.documentElement.style.fontSize = state.settings.fontSize + "px";
