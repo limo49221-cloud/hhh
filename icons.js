@@ -34,7 +34,8 @@ window.UI_ICON_MAP = {
   "ui-settings": "settings",
   "ui-call":     "phone",
   "ui-fav":      "star",
-  "ui-search":   "search"
+  "ui-search":   "search",
+  "ui-chevron-right": "chevron-right"
 };
 
 // 图标颜色（默认黑）

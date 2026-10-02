@@ -1137,3 +1137,69 @@ html, body {
   color: var(--icon-color, #000);
   stroke-width: 2;
 }
+/* ===== 设置页（新） ===== */
+.settings-list {
+  background: #fff;
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.settings-list-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 0.5px solid #f0f0f0;
+  cursor: pointer;
+  font-size: 15px;
+}
+
+.settings-list-item:last-child {
+  border-bottom: none;
+}
+
+.settings-list-item:active {
+  background: #f7f7f7;
+}
+
+.settings-list-item i[data-lucide],
+.settings-list-item svg {
+  width: 20px;
+  height: 20px;
+  color: var(--icon-color, #000);
+  stroke-width: 2;
+  flex-shrink: 0;
+}
+
+.settings-list-label {
+  flex: 1;
+  color: #1c1c1e;
+}
+
+.settings-list-arrow {
+  color: #ccc !important;
+}
+
+.settings-list-item-danger {
+  margin-top: 16px;
+  background: #fff;
+  border-radius: 10px;
+  color: #fa5151;
+}
+
+.settings-list-item-danger .settings-list-label {
+  color: #fa5151;
+}
+
+/* 概率分组标题 */
+.settings-group-title {
+  font-size: 13px;
+  color: #999;
+  margin: 16px 4px 8px;
+  font-weight: 600;
+}
+
+.settings-group-title:first-child {
+  margin-top: 0;
+}

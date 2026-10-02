@@ -269,6 +269,8 @@ function showScreen(id) {
   }
 }
 document.querySelectorAll("[data-back]").forEach(btn => {
+  // 设置页的返回按钮由 renderSettingsPage 动态绑定，跳过
+  if (btn.closest("#settingsApp")) return;
   btn.addEventListener("click", () => showScreen("desktop"));
 });
 
@@ -1185,8 +1187,10 @@ function openEmojiPicker() {
     });
     wrap.appendChild(manageBtn);
 
-    const list = document.createElement("div");
-    wrap.appendChild(list);
+    // 网格区（一排 5 个）
+    const grid = document.createElement("div");
+    grid.style.cssText = "display:grid;grid-template-columns:repeat(5,1fr);gap:8px;max-height:50vh;overflow-y:auto;";
+    wrap.appendChild(grid);
 
     function updateTabStyle() {
       tabBtns.forEach((b, i) => {
@@ -1196,29 +1200,27 @@ function openEmojiPicker() {
     }
 
     function render() {
-      list.innerHTML = "";
+      grid.innerHTML = "";
       const arr = state.emojis[pickTab] || [];
       if (!arr.length) {
-        list.innerHTML = `<div class="empty">还没有内容，去表情库添加吧</div>`;
+        grid.innerHTML = `<div class="empty" style="grid-column:1/-1;">还没有内容，去表情库添加吧</div>`;
         return;
       }
       arr.forEach((e) => {
-        const item = document.createElement("div");
-        item.className = "list-item";
         const isImg = e.startsWith("data:");
-        item.innerHTML = `<div class="name" style="font-size:${isImg ? "0" : "22px"};cursor:pointer;">${isImg ? `<img src="${e}" style="width:48px;height:48px;object-fit:cover;border-radius:6px;">` : esc(e)}</div><div class="actions"><button data-send>发送</button></div>`;
-        item.querySelector("[data-send]").addEventListener("click", () => {
+        const cell = document.createElement("div");
+        cell.style.cssText = "aspect-ratio:1/1;background:#f7f7f7;border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer;";
+        if (isImg) {
+          cell.innerHTML = `<img src="${e}" style="width:100%;height:100%;object-fit:cover;">`;
+        } else {
+          cell.innerHTML = `<span style="font-size:${pickTab === "kaomoji" ? "12px" : "26px"};text-align:center;word-break:break-all;padding:2px;line-height:1.2;">${esc(e)}</span>`;
+        }
+        cell.addEventListener("click", () => {
           if (isImg) sendMessage("", { image: e });
           else sendMessage(e);
           modal.classList.remove("open");
         });
-        const nameEl = item.querySelector(".name");
-        nameEl.addEventListener("click", () => {
-          if (isImg) sendMessage("", { image: e });
-          else sendMessage(e);
-          modal.classList.remove("open");
-        });
-        list.appendChild(item);
+        grid.appendChild(cell);
       });
     }
 
@@ -3641,61 +3643,110 @@ document.getElementById("modalClose").addEventListener("click", () => modal.clas
 modal.addEventListener("click", e => { if (e.target === modal) modal.classList.remove("open"); });
 
 /* ========== 设置 ========== */
+let settingsPage = "main";   // "main" | "profile" | "appearance" | "probability" | "poke"
+
 function openSettings() {
+  settingsPage = "main";
   showScreen("settingsApp");
   renderSettingsPage();
 }
+
 function renderSettingsPage() {
   const body = document.getElementById("settingsBody");
+  const titleEl = document.querySelector("#settingsApp .nav-title");
+  const backBtn = document.querySelector("#settingsApp .nav-back");
+
+  // 设置标题
+  const titles = {
+    main: "设置",
+    profile: "个人资料",
+    appearance: "外观",
+    probability: "概率设置",
+    poke: "拍一拍文案库"
+  };
+  if (titleEl) titleEl.textContent = titles[settingsPage] || "设置";
+
+  // 设置返回按钮行为：子页 → 主页，主页 → 桌面
+  if (backBtn) {
+    backBtn.onclick = null;   // 清掉之前的绑定
+    if (settingsPage === "main") {
+      backBtn.onclick = () => showScreen("desktop");
+    } else {
+      backBtn.onclick = () => {
+        settingsPage = "main";
+        renderSettingsPage();
+      };
+    }
+  }
+
+  // 清空
+  body.innerHTML = "";
+
+  // 根据当前页面渲染
+  if (settingsPage === "main")         return renderSettingsMain(body);
+  if (settingsPage === "profile")      return renderSettingsProfile(body);
+  if (settingsPage === "appearance")   return renderSettingsAppearance(body);
+  if (settingsPage === "probability")  return renderSettingsProbability(body);
+  if (settingsPage === "poke")         return renderSettingsPoke(body);
+}
+
+/* ---- 设置主页 ---- */
+function renderSettingsMain(body) {
+  const items = [
+    { icon: "user",                label: "个人资料",     page: "profile" },
+    { icon: "palette",             label: "外观",         page: "appearance" },
+    { icon: "sliders-horizontal",  label: "概率设置",     page: "probability" },
+    { icon: "hand",                label: "拍一拍文案库", page: "poke" }
+  ];
+
+  const list = document.createElement("div");
+  list.className = "settings-list";
+  items.forEach(it => {
+    const row = document.createElement("div");
+    row.className = "settings-list-item";
+    row.innerHTML = `
+      <i data-lucide="${it.icon}"></i>
+      <span class="settings-list-label">${esc(it.label)}</span>
+      <i data-lucide="chevron-right" class="settings-list-arrow"></i>
+    `;
+    row.addEventListener("click", () => {
+      settingsPage = it.page;
+      renderSettingsPage();
+    });
+    list.appendChild(row);
+  });
+  body.appendChild(list);
+
+  // 退出登录
+  const logoutRow = document.createElement("div");
+  logoutRow.className = "settings-list-item settings-list-item-danger";
+  logoutRow.innerHTML = `
+    <i data-lucide="log-out"></i>
+    <span class="settings-list-label">退出登录</span>
+  `;
+  logoutRow.addEventListener("click", () => {
+    if (confirm("退出登录？")) doLogout();
+  });
+  body.appendChild(logoutRow);
+
+  if (window.__icons) window.__icons.refreshIcons();
+}
+
+/* ---- 个人资料 ---- */
+function renderSettingsProfile(body) {
   const s = state.settings;
-  body.innerHTML = `
+
+  const wrap = document.createElement("div");
+  wrap.innerHTML = `
     <div class="list-item"><div class="name">我的昵称</div><div class="actions"><button data-edit="myName">${esc(s.myName)}</button></div></div>
     <div class="list-item"><div class="name">我的头像</div><div class="actions">${s.myAvatar ? `<img src="${s.myAvatar}" style="width:32px;height:32px;border-radius:4px;object-fit:cover;margin-right:6px;">` : ""}<button data-avatar="myAvatar">${s.myAvatar ? "更换" : "上传"}</button>${s.myAvatar ? `<button class="danger" data-avclear="myAvatar">清除</button>` : ""}</div></div>
     <div class="list-item"><div class="name">对方昵称</div><div class="actions"><button data-edit="taName">${esc(s.taName)}</button></div></div>
     <div class="list-item"><div class="name">对方头像</div><div class="actions">${s.taAvatar ? `<img src="${s.taAvatar}" style="width:32px;height:32px;border-radius:4px;object-fit:cover;margin-right:6px;">` : ""}<button data-avatar="taAvatar">${s.taAvatar ? "更换" : "上传"}</button>${s.taAvatar ? `<button class="danger" data-avclear="taAvatar">清除</button>` : ""}</div></div>
-    <div class="list-item"><div class="name">聊天背景色</div><div class="actions"><input type="color" value="${s.bgColor}" data-color="bgColor"></div></div>
-    <div class="list-item"><div class="name">聊天背景图</div><div class="actions"><button data-bgimg>上传</button>${s.bgImage ? `<button class="danger" data-bgclear>清除</button>` : ""}</div></div>
-    <div class="list-item"><div class="name">图标颜色</div><div class="actions"><input type="color" value="${s.iconColor || '#000000'}" data-color="iconColor" data-icon-color></div></div>
-    <div class="list-item"><div class="name">我的气泡颜色</div><div class="actions"><input type="color" value="${s.myBubbleColor}" data-color="myBubbleColor"></div></div>
-    <div class="list-item"><div class="name">对方气泡颜色</div><div class="actions"><input type="color" value="${s.taBubbleColor}" data-color="taBubbleColor"></div></div>
-    <div class="list-item"><div class="name">字体大小（${s.fontSize}px）</div><div class="actions"><input type="range" min="12" max="22" value="${s.fontSize}" data-range="fontSize"></div></div>
-    <div class="list-item"><div class="name">已读不回（${s.readNoReplyProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.readNoReplyProb}" data-range="readNoReplyProb"></div></div>
-    <div class="list-item"><div class="name">语音概率（${s.voiceProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.voiceProb}" data-range="voiceProb"></div></div>
-    <div class="list-item"><div class="name">图片概率（${s.imgProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.imgProb}" data-range="imgProb"></div></div>
-    <div class="list-item"><div class="name">TA 挂表情（${s.taStickerProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.taStickerProb}" data-range="taStickerProb"></div></div>
-    <div class="list-item"><div class="name">拍一拍回拍（${s.pokeBackProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.pokeBackProb}" data-range="pokeBackProb"></div></div>
-    <div class="list-item"><div class="name">拍一拍触发字卡（${s.pokeCardProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.pokeCardProb}" data-range="pokeCardProb"></div></div>
-    <div class="list-item"><div class="name">通话拒绝（${s.callRejectProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.callRejectProb}" data-range="callRejectProb"></div></div>
-    <div class="list-item"><div class="name">心情触发（${s.moodProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.moodProb}" data-range="moodProb"></div></div>
-    <div class="list-item"><div class="name">意图触发（${s.intentProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.intentProb}" data-range="intentProb"></div></div>
-    <div class="list-item"><div class="name">对方发朋友圈（${s.taMomentsProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.taMomentsProb}" data-range="taMomentsProb"></div></div>
-    <div class="list-item"><div class="name">对方评论（${s.taCommentProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.taCommentProb}" data-range="taCommentProb"></div></div>
-    <div class="list-item"><div class="name">TA 回复我评论（${s.taReplyCommentProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.taReplyCommentProb}" data-range="taReplyCommentProb"></div></div>
-    <div class="list-item"><div class="name">随机搜索链接（${s.searchLinkProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.searchLinkProb}" data-range="searchLinkProb"></div></div>
-    <div class="list-item"><div class="name">随机推荐（${s.suggestProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.suggestProb}" data-range="suggestProb"></div></div>
-    <div class="list-item"><div class="name">TA 引用你（${s.taQuoteProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.taQuoteProb}" data-range="taQuoteProb"></div></div>
-    <div class="list-item"><div class="name">TA 撤回整条（${s.taRecallProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.taRecallProb}" data-range="taRecallProb"></div></div>
-    <div class="list-item"><div class="name">TA 出题概率（${s.surveyProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.surveyProb}" data-range="surveyProb"></div></div>
-    <div class="list-item"><div class="name">TA 发吃的（${s.eatProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.eatProb}" data-range="eatProb"></div></div>
-    <div class="list-item"><div class="name">菜系比例（${s.eatDishRatio}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.eatDishRatio}" data-range="eatDishRatio"></div></div>
-    <div class="list-item"><div class="name">TA 拼字卡（${s.taCombineProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.taCombineProb}" data-range="taCombineProb"></div></div>
-    <div class="list-item"><div class="name">TA 主动打来（${s.taCallProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.taCallProb}" data-range="taCallProb"></div></div>
-    <div class="list-item"><div class="name">TA 连发消息（${s.taMultiReplyProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.taMultiReplyProb}" data-range="taMultiReplyProb"></div></div>
-    <div class="list-item"><div class="name">连发最少条数（${s.taMultiMin}）</div><div class="actions"><input type="range" min="2" max="6" value="${s.taMultiMin}" data-range="taMultiMin"></div></div>
-    <div class="list-item"><div class="name">连发最多条数（${s.taMultiMax}）</div><div class="actions"><input type="range" min="2" max="6" value="${s.taMultiMax}" data-range="taMultiMax"></div></div>
-    <div class="list-item"><div class="name">拼字卡最少张数（${s.taCombineMin}）</div><div class="actions"><input type="range" min="1" max="10" value="${s.taCombineMin}" data-range="taCombineMin"></div></div>
-    <div class="list-item"><div class="name">拼字卡最多张数（${s.taCombineMax}）</div><div class="actions"><input type="range" min="1" max="10" value="${s.taCombineMax}" data-range="taCombineMax"></div></div>
-    <div class="list-item"><div class="name">回信概率（${s.letterReplyProb ?? 60}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.letterReplyProb ?? 60}" data-range="letterReplyProb"></div></div>
-    <div class="list-item"><div class="name">回信最快（${s.letterReplyDelayMinH ?? 1}小时）</div><div class="actions"><input type="range" min="1" max="24" value="${s.letterReplyDelayMinH ?? 1}" data-range="letterReplyDelayMinH"></div></div>
-    <div class="list-item"><div class="name">回信最慢（${s.letterReplyDelayMaxD ?? 1}天）</div><div class="actions"><input type="range" min="1" max="30" value="${s.letterReplyDelayMaxD ?? 1}" data-range="letterReplyDelayMaxD"></div></div>
-    <div class="list-item"><div class="name">⚡ 调试模式（3-8秒回信）</div><div class="actions"><input type="checkbox" ${s.letterDebugFast ? "checked" : ""} data-check="letterDebugFast"></div></div>
-    <div class="list-item"><div class="name">拍一拍文案库</div><div class="actions"><button data-pokemgr>管理（${state.pokeTexts.length}）</button></div></div>
-    <div class="list-item"><div class="name">账号</div><div class="actions"><button class="danger" id="logoutBtn">退出登录</button></div></div>`;
-  const logoutBtn = body.querySelector("#logoutBtn");
-  if (logoutBtn) logoutBtn.addEventListener("click", () => {
-    if (confirm("退出登录？")) doLogout();
-  });
-  body.querySelectorAll("[data-edit]").forEach(btn => {
+  `;
+  body.appendChild(wrap);
+
+  // 绑定事件（原逻辑）
+  wrap.querySelectorAll("[data-edit]").forEach(btn => {
     btn.addEventListener("click", () => {
       const k = btn.dataset.edit;
       const v = prompt("修改为：", s[k]);
@@ -3705,7 +3756,7 @@ function renderSettingsPage() {
       if (k === "taName") document.getElementById("chatTitle").textContent = s.taName;
     });
   });
-  body.querySelectorAll("[data-avatar]").forEach(btn => {
+  wrap.querySelectorAll("[data-avatar]").forEach(btn => {
     btn.addEventListener("click", () => {
       const k = btn.dataset.avatar;
       const f = document.createElement("input");
@@ -3719,29 +3770,47 @@ function renderSettingsPage() {
       f.click();
     });
   });
-  body.querySelectorAll("[data-avclear]").forEach(btn => {
+  wrap.querySelectorAll("[data-avclear]").forEach(btn => {
     btn.addEventListener("click", () => {
       const k = btn.dataset.avclear;
       s[k] = ""; saveSettings(); renderSettingsPage();
       toast("已清除头像");
     });
   });
-  body.querySelectorAll("[data-color]").forEach(inp => {
-    inp.addEventListener("input", () => { s[inp.dataset.color] = inp.value; saveSettings(); applyAppearance(); });
+}
+
+/* ---- 外观 ---- */
+function renderSettingsAppearance(body) {
+  const s = state.settings;
+
+  const wrap = document.createElement("div");
+  wrap.innerHTML = `
+    <div class="list-item"><div class="name">聊天背景色</div><div class="actions"><input type="color" value="${s.bgColor}" data-color="bgColor"></div></div>
+    <div class="list-item"><div class="name">聊天背景图</div><div class="actions"><button data-bgimg>上传</button>${s.bgImage ? `<button class="danger" data-bgclear>清除</button>` : ""}</div></div>
+    <div class="list-item"><div class="name">我的气泡颜色</div><div class="actions"><input type="color" value="${s.myBubbleColor}" data-color="myBubbleColor"></div></div>
+    <div class="list-item"><div class="name">对方气泡颜色</div><div class="actions"><input type="color" value="${s.taBubbleColor}" data-color="taBubbleColor"></div></div>
+    <div class="list-item"><div class="name">图标颜色</div><div class="actions"><input type="color" value="${s.iconColor || '#000000'}" data-color="iconColor" data-icon-color></div></div>
+    <div class="list-item"><div class="name">字体大小（${s.fontSize}px）</div><div class="actions"><input type="range" min="12" max="22" value="${s.fontSize}" data-range="fontSize"></div></div>
+  `;
+  body.appendChild(wrap);
+
+  wrap.querySelectorAll("[data-color]").forEach(inp => {
+    inp.addEventListener("input", () => {
+      s[inp.dataset.color] = inp.value;
+      saveSettings();
+      applyAppearance();
+      if (inp.hasAttribute("data-icon-color") && window.__icons) {
+        window.__icons.applyIconColor();
+      }
+    });
   });
-  body.querySelectorAll("[data-range]").forEach(inp => {
+  wrap.querySelectorAll("[data-range]").forEach(inp => {
     inp.addEventListener("input", () => {
       s[inp.dataset.range] = Number(inp.value);
       saveSettings(); renderSettingsPage(); applyAppearance();
     });
   });
-  body.querySelectorAll("[data-check]").forEach(inp => {
-    inp.addEventListener("change", () => {
-      s[inp.dataset.check] = inp.checked;
-      saveSettings();
-    });
-  });
-  const bgBtn = body.querySelector("[data-bgimg]");
+  const bgBtn = wrap.querySelector("[data-bgimg]");
   if (bgBtn) bgBtn.addEventListener("click", () => {
     const f = document.createElement("input");
     f.type = "file"; f.accept = "image/*";
@@ -3752,45 +3821,151 @@ function renderSettingsPage() {
     };
     f.click();
   });
-  const bgClear = body.querySelector("[data-bgclear]");
+  const bgClear = wrap.querySelector("[data-bgclear]");
   if (bgClear) bgClear.addEventListener("click", () => {
     s.bgImage = ""; saveSettings(); renderSettingsPage(); applyChatBackground();
   });
-  const pokeMgr = body.querySelector("[data-pokemgr]");
-  if (pokeMgr) pokeMgr.addEventListener("click", () => {
-    openModal("拍一拍文案库", () => {
-      const wrap = document.createElement("div");
-      wrap.innerHTML = `<div class="row"><input class="input" id="pokeInput" placeholder="输入拍一拍文案"><button class="btn" id="pokeAddBtn">添加</button></div><div id="pokeList"></div>`;
-      const list = wrap.querySelector("#pokeList");
-      function render() {
-        list.innerHTML = "";
-        if (!state.pokeTexts.length) { list.innerHTML = `<div class="empty">还没有文案</div>`; return; }
-        state.pokeTexts.forEach((t, i) => {
-          const item = document.createElement("div");
-          item.className = "list-item";
-          item.innerHTML = `<div class="name">${esc(t)}</div><div class="actions"><button class="danger" data-del>删除</button></div>`;
-          item.querySelector("[data-del]").addEventListener("click", () => { state.pokeTexts.splice(i, 1); savePokeTexts(); render(); });
-          list.appendChild(item);
-        });
+}
+
+/* ---- 概率设置 ---- */
+function renderSettingsProbability(body) {
+  const s = state.settings;
+
+  const groups = [
+    { title: "聊天", items: [
+      { key: "readNoReplyProb", label: "已读不回", min: 0, max: 100, unit: "%" },
+      { key: "voiceProb",       label: "语音概率", min: 0, max: 100, unit: "%" },
+      { key: "imgProb",         label: "图片概率", min: 0, max: 100, unit: "%" },
+      { key: "taStickerProb",   label: "TA 挂表情", min: 0, max: 100, unit: "%" },
+      { key: "taMultiReplyProb",label: "TA 连发消息", min: 0, max: 100, unit: "%" },
+      { key: "taMultiMin",      label: "连发最少条数", min: 2, max: 6, unit: "" },
+      { key: "taMultiMax",      label: "连发最多条数", min: 2, max: 6, unit: "" },
+      { key: "taCombineProb",   label: "TA 拼字卡", min: 0, max: 100, unit: "%" },
+      { key: "taCombineMin",    label: "拼字卡最少张数", min: 1, max: 10, unit: "" },
+      { key: "taCombineMax",    label: "拼字卡最多张数", min: 1, max: 10, unit: "" },
+      { key: "taQuoteProb",     label: "TA 引用你", min: 0, max: 100, unit: "%" },
+      { key: "taRecallProb",    label: "TA 撤回整条", min: 0, max: 100, unit: "%" }
+    ]},
+    { title: "朋友圈", items: [
+      { key: "taMomentsProb",       label: "对方发朋友圈", min: 0, max: 100, unit: "%" },
+      { key: "taCommentProb",       label: "对方评论", min: 0, max: 100, unit: "%" },
+      { key: "taReplyCommentProb",  label: "TA 回复我评论", min: 0, max: 100, unit: "%" }
+    ]},
+    { title: "通话", items: [
+      { key: "callRejectProb", label: "通话拒绝", min: 0, max: 100, unit: "%" },
+      { key: "taCallProb",     label: "TA 主动打来", min: 0, max: 100, unit: "%" }
+    ]},
+    { title: "信件", items: [
+      { key: "letterReplyProb",       label: "回信概率", min: 0, max: 100, unit: "%" },
+      { key: "letterReplyDelayMinH",  label: "回信最快", min: 1, max: 24, unit: "小时" },
+      { key: "letterReplyDelayMaxD",  label: "回信最慢", min: 1, max: 30, unit: "天" }
+    ]},
+    { title: "随机玩法", items: [
+      { key: "moodProb",        label: "心情触发", min: 0, max: 100, unit: "%" },
+      { key: "intentProb",      label: "意图触发", min: 0, max: 100, unit: "%" },
+      { key: "searchLinkProb",  label: "随机搜索链接", min: 0, max: 100, unit: "%" },
+      { key: "suggestProb",     label: "随机推荐", min: 0, max: 100, unit: "%" },
+      { key: "surveyProb",      label: "TA 出题概率", min: 0, max: 100, unit: "%" },
+      { key: "eatProb",         label: "TA 发吃的", min: 0, max: 100, unit: "%" },
+      { key: "eatDishRatio",    label: "菜系比例", min: 0, max: 100, unit: "%" }
+    ]}
+  ];
+
+  const wrap = document.createElement("div");
+  groups.forEach(g => {
+    const title = document.createElement("div");
+    title.className = "settings-group-title";
+    title.textContent = g.title;
+    wrap.appendChild(title);
+
+    g.items.forEach(it => {
+      const row = document.createElement("div");
+      row.className = "list-item";
+      row.innerHTML = `
+        <div class="name">${esc(it.label)}（${s[it.key]}${it.unit}）</div>
+        <div class="actions"><input type="range" min="${it.min}" max="${it.max}" value="${s[it.key]}" data-key="${it.key}"></div>
+      `;
+      wrap.appendChild(row);
+    });
+  });
+
+  // 调试模式（checkbox）
+  const debugTitle = document.createElement("div");
+  debugTitle.className = "settings-group-title";
+  debugTitle.textContent = "信件调试";
+  wrap.appendChild(debugTitle);
+  const debugRow = document.createElement("div");
+  debugRow.className = "list-item";
+  debugRow.innerHTML = `
+    <div class="name">⚡ 调试模式（3-8秒回信）</div>
+    <div class="actions"><input type="checkbox" ${s.letterDebugFast ? "checked" : ""} data-check="letterDebugFast"></div>
+  `;
+  wrap.appendChild(debugRow);
+
+  body.appendChild(wrap);
+
+  wrap.querySelectorAll("[data-key]").forEach(inp => {
+    inp.addEventListener("input", () => {
+      s[inp.dataset.key] = Number(inp.value);
+      saveSettings();
+      // 只更新这一行的文字，不重绘整个页面（否则滑块会跳）
+      const nameEl = inp.closest(".list-item").querySelector(".name");
+      const item = groups.flatMap(g => g.items).find(x => x.key === inp.dataset.key);
+      if (nameEl && item) {
+        nameEl.textContent = `${item.label}（${s[item.key]}${item.unit}）`;
       }
-      render();
-      wrap.querySelector("#pokeAddBtn").addEventListener("click", () => {
-        const v = wrap.querySelector("#pokeInput").value.trim();
-        if (!v) return;
-        state.pokeTexts.push(v); savePokeTexts(); wrap.querySelector("#pokeInput").value = ""; render();
-      });
-      return wrap;
+    });
+  });
+  wrap.querySelectorAll("[data-check]").forEach(inp => {
+    inp.addEventListener("change", () => {
+      s[inp.dataset.check] = inp.checked;
+      saveSettings();
     });
   });
 }
-function applyAppearance() {
-  document.documentElement.style.fontSize = state.settings.fontSize + "px";
-  document.querySelectorAll(".msg-row.me .bubble").forEach(b => b.style.background = state.settings.myBubbleColor);
-  document.querySelectorAll(".msg-row.bot .bubble").forEach(b => b.style.background = state.settings.taBubbleColor);
-  document.documentElement.style.setProperty("--me-bubble", state.settings.myBubbleColor);
-  document.documentElement.style.setProperty("--ta-bubble", state.settings.taBubbleColor);
-  applyChatBackground();
-  document.documentElement.style.setProperty("--icon-color", state.settings.iconColor || "#000000");
+
+/* ---- 拍一拍文案库 ---- */
+function renderSettingsPoke(body) {
+  const wrap = document.createElement("div");
+
+  const addRow = document.createElement("div");
+  addRow.className = "row";
+  addRow.innerHTML = `<input class="input" id="pokeInput" placeholder="输入拍一拍文案"><button class="btn" id="pokeAddBtn">添加</button>`;
+  wrap.appendChild(addRow);
+
+  const list = document.createElement("div");
+  wrap.appendChild(list);
+
+  function render() {
+    list.innerHTML = "";
+    if (!state.pokeTexts.length) {
+      list.innerHTML = `<div class="empty">还没有文案</div>`;
+      return;
+    }
+    state.pokeTexts.forEach((t, i) => {
+      const item = document.createElement("div");
+      item.className = "list-item";
+      item.innerHTML = `<div class="name">${esc(t)}</div><div class="actions"><button class="danger" data-del>删除</button></div>`;
+      item.querySelector("[data-del]").addEventListener("click", () => {
+        state.pokeTexts.splice(i, 1);
+        savePokeTexts();
+        render();
+      });
+      list.appendChild(item);
+    });
+  }
+  render();
+
+  wrap.querySelector("#pokeAddBtn").addEventListener("click", () => {
+    const v = wrap.querySelector("#pokeInput").value.trim();
+    if (!v) return;
+    state.pokeTexts.push(v);
+    savePokeTexts();
+    wrap.querySelector("#pokeInput").value = "";
+    render();
+  });
+
+  body.appendChild(wrap);
 }
 
 /* ========== 登录 ========== */
