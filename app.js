@@ -561,7 +561,11 @@ function renderMessage(body, m) {
         `<button class="survey-btn" data-si="${i}">${esc(String.fromCharCode(65 + i))}. ${esc(o)}</button>`
       ).join("");
     }
-  } else if (m.image) inner += `<img class="msg-img" src="${m.image}">`;
+  } else if (m.image) {
+    // 纯图片消息：不套气泡，直接显示图
+    bubble.classList.add("bubble-img-only");
+    inner += `<img class="msg-img" src="${m.image}">`;
+  }
   else if (m.searchLink) {
     inner += `<div style="font-size:15px;font-weight:600;margin-bottom:6px;">${esc(m.searchLink.kw)}</div>`;
     inner += `<div style="padding:8px 10px;background:#f0f0f0;border-radius:6px;cursor:pointer;font-size:14px;" class="search-link">🔗 点击搜索（${esc(m.searchLink.platform ? m.searchLink.platform.name : "")}）</div>`;
@@ -1250,7 +1254,9 @@ function openEmojiPicker() {
 
     // 网格区（一排 5 个）
     const grid = document.createElement("div");
-    grid.style.cssText = "display:grid;grid-template-columns:repeat(5,1fr);gap:8px;max-height:50vh;overflow-y:auto;";
+    // 表情包用 2 列大图，emoji/颜文字用 5 列小格
+    const cols = pickTab === "sticker" ? 2 : 5;
+    grid.style.cssText = `display:grid;grid-template-columns:repeat(${cols},1fr);gap:8px;max-height:55vh;overflow-y:auto;`;
     wrap.appendChild(grid);
 
     function updateTabStyle() {
@@ -1270,9 +1276,18 @@ function openEmojiPicker() {
       arr.forEach((e) => {
         const isImg = e.startsWith("data:");
         const cell = document.createElement("div");
-        cell.style.cssText = "aspect-ratio:1/1;background:#f7f7f7;border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer;";
+        // 表情包用大图，emoji/颜文字用小格
+        if (pickTab === "sticker") {
+          cell.style.cssText = "background:#f7f7f7;border-radius:10px;display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer;padding:6px;";
+        } else {
+          cell.style.cssText = "aspect-ratio:1/1;background:#f7f7f7;border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer;";
+        }
         if (isImg) {
-          cell.innerHTML = `<img src="${e}" style="width:100%;height:100%;object-fit:cover;">`;
+          if (pickTab === "sticker") {
+            cell.innerHTML = `<img src="${e}" style="width:100%;height:auto;max-height:200px;object-fit:contain;">`;
+          } else {
+            cell.innerHTML = `<img src="${e}" style="width:100%;height:100%;object-fit:cover;">`;
+          }
         } else {
           cell.innerHTML = `<span style="font-size:${pickTab === "kaomoji" ? "12px" : "26px"};text-align:center;word-break:break-all;padding:2px;line-height:1.2;">${esc(e)}</span>`;
         }

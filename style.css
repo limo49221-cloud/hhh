@@ -418,6 +418,26 @@ html, body {
 .bubble.voice .dur { font-size: 13px; color: #888; }
 
 /* 图片消息 */
+/* 纯图片消息：去掉气泡背景、内边距、箭头 */
+.bubble.bubble-img-only {
+  background: transparent !important;
+  padding: 0 !important;
+  box-shadow: none;
+  border-radius: 0;
+}
+.bubble.bubble-img-only::before,
+.bubble.bubble-img-only::after {
+  display: none !important;
+}
+
+/* 图片消息本身：控制大小 */
+.bubble.bubble-img-only img.msg-img {
+  max-width: 140px;      /* 你想要多小就改这里 */
+  max-height: 140px;
+  border-radius: 10px;
+  display: block;
+  object-fit: cover;
+}
 .bubble img.msg-img {
   max-width: 100%;
   max-height: 260px;
@@ -900,14 +920,14 @@ html, body {
   margin-top: 6px;
 }
 .sticker-img {
-  max-width: 150px;
-  max-height: 150px;
-  border-radius: 6px;
+  max-width: 220px;
+  max-height: 220px;
+  border-radius: 8px;
   display: block;
   object-fit: contain;
 }
 .sticker-text {
-  font-size: 26px;
+  font-size: 32px;
 }
 
 /* ===== 通话小窗 ===== */
