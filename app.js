@@ -481,7 +481,9 @@ function renderMessages(resetLimit) {
     }
   }
 
-  body.scrollTop = body.scrollHeight;
+  // 只有用户本来就贴着底部时，才自动滚到底
+  const wasAtBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 60;
+  if (wasAtBottom) body.scrollTop = body.scrollHeight;
 }
 function renderMessage(body, m) {
   const wrapper = document.createElement("div");
@@ -768,8 +770,9 @@ function sendMessage(text, opts = {}) {
   // 如果之前显示的是"空提示"，先清掉
   const emptyTip = body.querySelector(".system");
   if (emptyTip && state.messages.length === 1) body.innerHTML = "";
+  const wasAtBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 60;
   renderMessage(body, msg);
-  body.scrollTop = body.scrollHeight;
+  if (wasAtBottom) body.scrollTop = body.scrollHeight;
 
   // 查岗触发
   if (text && typeof text === "string" && /你在干什么/.test(text)) {
@@ -1064,8 +1067,9 @@ function addBotMessage(text, opts = {}) {
   if (chatScreen && chatScreen.classList.contains("active")) {
     // 追加式渲染：只画这一条，不重绘全部
     const body = document.getElementById("chatBody");
+    const wasAtBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 60;
     renderMessage(body, msg);
-    body.scrollTop = body.scrollHeight;
+    if (wasAtBottom) body.scrollTop = body.scrollHeight;
   }
   showNotification(msg);
   updateBadges();
