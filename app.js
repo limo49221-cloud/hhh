@@ -2523,7 +2523,20 @@ function taCommentMoment(moment) {
       // AI 模式：让 AI 评论这条动态
       const prompt = `我在朋友圈发了一条动态："${moment.text}"，请你以我的恋人口吻评论一句（15字以内，口语化，不要解释）`;
       window.__ai.askAI(prompt).then(reply => {
-        if (!reply) return;
+        if (!reply) {
+          // AI 没返回，回退到字卡
+          const card = drawCard();
+          if (card) {
+            if (!moment.comments) moment.comments = [];
+            moment.comments.push({ id: uid(), from: "ta", text: card, time: fmtFull(nowBeijing()) });
+            saveMoments();
+            const mScreen = document.getElementById("momentsApp");
+            if (mScreen && mScreen.classList.contains("active")) renderMoments();
+            updateBadges();
+            toast(`${state.settings.taName} 评论了你的动态`);
+          }
+          return;
+        }
         if (!moment.comments) moment.comments = [];
         moment.comments.push({ id: uid(), from: "ta", text: reply, time: fmtFull(nowBeijing()) });
         saveMoments();
@@ -2550,7 +2563,19 @@ function taReplyToMyComment(moment, myCommentText) {
   if (window.AI_MODE && window.AI_MODE.enabled && window.AI_MODE.useAI && window.AI_MODE.useAI.moments) {
     const prompt = `我在朋友圈评论了你："${myCommentText}"，请以我的恋人口吻回一句（15字以内，口语化，不要解释）`;
     window.__ai.askAI(prompt).then(reply => {
-      if (!reply) return;
+      if (!reply) {
+        // AI 没返回，回退到字卡
+        const card = drawCard();
+        if (card) {
+          if (!moment.comments) moment.comments = [];
+          moment.comments.push({ id: uid(), from: "ta", text: card, time: fmtFull(nowBeijing()) });
+          saveMoments();
+          const mScreen = document.getElementById("momentsApp");
+          if (mScreen && mScreen.classList.contains("active")) renderMoments();
+          updateBadges();
+        }
+        return;
+      }
       if (!moment.comments) moment.comments = [];
       moment.comments.push({ id: uid(), from: "ta", text: reply, time: fmtFull(nowBeijing()) });
       saveMoments();
@@ -3234,7 +3259,35 @@ function taWriteLetter(replyToSubject) {
       ? `我给你写了封信，标题是"${replyToSubject}"，请以我的恋人口吻回一封信（50字以内，像真的写信，不要解释）`
       : `请以我的恋人口吻给我写一封短信（50字以内，像真的写信，不要解释）`;
     window.__ai.askAI(prompt).then(reply => {
-      if (!reply) return;
+      if (!reply) {
+        // AI 没返回，回退到字卡
+        const card = drawCard();
+        if (card) {
+          const letter = {
+            id: uid(),
+            from: "ta",
+            subject: replyToSubject ? "Re: " + replyToSubject : "写给你",
+            body: card,
+            image: null,
+            time: fmtFull(nowBeijing()),
+            ts: Date.now(),
+            read: false
+          };
+          state.letters.push(letter);
+          saveLetters();
+          updateBadges();
+          const msg = {
+            id: uid(), from: "ta",
+            text: `【来信】${letter.subject}`,
+            time: fmtTime(nowBeijing()), ts: Date.now()
+          };
+          showNotification(msg);
+          const letterScreen = document.getElementById("lettersApp");
+          if (letterScreen && letterScreen.classList.contains("active")) renderLetters();
+          toast(`${state.settings.taName} 给你写了一封信`);
+        }
+        return;
+      }
       const letter = {
         id: uid(),
         from: "ta",
