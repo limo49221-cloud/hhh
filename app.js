@@ -1766,12 +1766,16 @@ function renderEmojiManager() {
 
   // 添加区
   const addArea = document.createElement("div");
-  addArea.className = "row";
   addArea.style.marginBottom = "12px";
   if (emojiTab === "emoji" || emojiTab === "kaomoji") {
     addArea.innerHTML = `
-      <input class="input" id="emojiNewInput" placeholder="${emojiTab === "emoji" ? "输入一个 emoji，比如 😀" : "输入颜文字，比如 (｡･ω･｡)"}">
-      <button class="btn" id="emojiNewBtn">添加</button>
+      <div class="row">
+        <input class="input" id="emojiNewInput" placeholder="${emojiTab === "emoji" ? "输入一个 emoji，比如 😀" : "输入颜文字，比如 (｡･ω･｡)"}">
+        <button class="btn" id="emojiNewBtn">添加</button>
+      </div>
+      <div class="row">
+        <button class="btn secondary" id="emojiBatchBtn" style="width:100%;">批量添加（一行一个）</button>
+      </div>
     `;
   } else {
     addArea.innerHTML = `
@@ -1846,6 +1850,22 @@ function renderEmojiManager() {
     };
     btn.addEventListener("click", addOne);
     inp.addEventListener("keydown", e => { if (e.key === "Enter") addOne(); });
+
+    // 批量添加
+    addArea.querySelector("#emojiBatchBtn").addEventListener("click", () => {
+      const text = prompt("批量添加：每行一个，也可以直接用空格或逗号分隔");
+      if (!text) return;
+      // 按换行、逗号、空格切分，去掉空项
+      const items = text
+        .split(/[\n,，]+/)
+        .map(s => s.trim())
+        .filter(Boolean);
+      if (!items.length) return;
+      items.forEach(v => state.emojis[emojiTab].push(v));
+      saveEmojis();
+      renderEmojiManager();
+      toast(`已添加 ${items.length} 个`);
+    });
   } else {
     const fileInp = addArea.querySelector("#emojiNewFile");
     addArea.querySelector("#emojiNewImgBtn").addEventListener("click", () => fileInp.click());
